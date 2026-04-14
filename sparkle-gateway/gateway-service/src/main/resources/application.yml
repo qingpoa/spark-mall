@@ -4,12 +4,23 @@ server:
 spring:
   application:
     name: gateway-service
+  profiles:
+    active: ${SPRING_PROFILES_ACTIVE:local}
+  config:
+    import: optional:classpath:application-${spring.profiles.active}-private.yml
   cloud:
     nacos:
       discovery:
         enabled: false
+        server-addr: ${app.nacos.server-addr:127.0.0.1:8848}
+        namespace: ${app.nacos.namespace:}
+        group: ${app.nacos.group:DEFAULT_GROUP}
       config:
         enabled: false
+        server-addr: ${app.nacos.server-addr:127.0.0.1:8848}
+        namespace: ${app.nacos.namespace:}
+        group: ${app.nacos.group:DEFAULT_GROUP}
+        file-extension: yaml
     gateway:
       routes:
         - id: user-service
@@ -36,7 +47,6 @@ spring:
           uri: lb://coupon-service
           predicates:
             - Path=/api/v1/coupon/**
-
 management:
   endpoints:
     web:
