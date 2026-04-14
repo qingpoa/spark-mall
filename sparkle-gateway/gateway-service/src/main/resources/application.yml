@@ -22,31 +22,33 @@ spring:
         group: ${app.nacos.group:DEFAULT_GROUP}
         file-extension: yaml
     gateway:
-      routes:
-        - id: user-service
-          uri: lb://user-service
-          predicates:
-            - Path=/api/v1/user/**
-        - id: product-service
-          uri: lb://product-service
-          predicates:
-            - Path=/api/v1/product/**
-        - id: cart-service
-          uri: lb://cart-service
-          predicates:
-            - Path=/api/v1/cart/**
-        - id: order-service
-          uri: lb://order-service
-          predicates:
-            - Path=/api/v1/order/**
-        - id: stock-service
-          uri: lb://stock-service
-          predicates:
-            - Path=/api/v1/stock/**
-        - id: coupon-service
-          uri: lb://coupon-service
-          predicates:
-            - Path=/api/v1/coupon/**
+      server:
+        webflux:
+          routes:
+            - id: user-service
+              uri: lb://user-service
+              predicates:
+                - Path=/api/v1/user/**
+            - id: product-service
+              uri: lb://product-service
+              predicates:
+                - Path=/api/v1/product/**
+            - id: cart-service
+              uri: lb://cart-service
+              predicates:
+                - Path=/api/v1/cart/**
+            - id: order-service
+              uri: lb://order-service
+              predicates:
+                - Path=/api/v1/order/**
+            - id: stock-service
+              uri: lb://stock-service
+              predicates:
+                - Path=/api/v1/stock/**
+            - id: coupon-service
+              uri: lb://coupon-service
+              predicates:
+                - Path=/api/v1/coupon/**
 management:
   endpoints:
     web:
