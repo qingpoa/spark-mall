@@ -13,6 +13,8 @@ import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
+import org.springframework.web.multipart.MultipartException;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 
@@ -47,6 +49,14 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(DuplicateKeyException.class)
     public ResponseEntity<Result> handleDuplicateKeyException(DuplicateKeyException exception) {
         return Results.failure(Result.CONFLICT, "数据重复，操作冲突");
+    }
+
+    @ExceptionHandler({
+            MaxUploadSizeExceededException.class,
+            MultipartException.class
+    })
+    public ResponseEntity<Result> handleMultipartException(Exception exception) {
+        return Results.failure(Result.BAD_REQUEST, "图片超过最大值 5MB");
     }
 
     @ExceptionHandler({

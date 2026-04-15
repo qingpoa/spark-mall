@@ -95,8 +95,7 @@ public class JwtTokenService {
     }
 
     private boolean isBlacklisted(String tokenId) {
-        Boolean exists = stringRedisTemplate.hasKey(getBlacklistKey(tokenId));
-        return Boolean.TRUE.equals(exists);
+        return Boolean.TRUE.equals(stringRedisTemplate.hasKey(getBlacklistKey(tokenId)));
     }
 
     private String getBlacklistKey(String tokenId) {

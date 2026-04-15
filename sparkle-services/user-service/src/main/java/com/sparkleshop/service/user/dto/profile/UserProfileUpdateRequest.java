@@ -8,6 +8,4 @@ public class UserProfileUpdateRequest {
     private String nickname;
 
     private String email;
-
-    private String avatar;
 }

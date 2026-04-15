@@ -4,6 +4,10 @@ server:
 spring:
   application:
     name: user-service
+  servlet:
+    multipart:
+      max-file-size: 5MB
+      max-request-size: 5MB
   profiles:
     active: ${SPRING_PROFILES_ACTIVE:local}
   config:
@@ -53,3 +57,10 @@ management:
     web:
       exposure:
         include: health,info
+aliyun:
+  oss:
+    endpoint: oss-cn-beijing.aliyuncs.com
+    bucket-name: ${aliyun.oss.Bucket_Name}
+    accessKeyId: ${Access_Key_Id}
+    accessKeySecret: ${Access_Key_Secret}
+    domain: https://${aliyun.oss.Bucket_Name}.oss-cn-beijing.aliyuncs.com

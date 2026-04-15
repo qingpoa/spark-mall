@@ -1,17 +1,20 @@
 package com.sparkleshop.service.user.service.impl;
 
+import cn.hutool.core.util.StrUtil;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sparkleshop.common.core.exception.BusinessException;
 import com.sparkleshop.common.redis.key.RedisKeys;
 import com.sparkleshop.common.security.jwt.JwtTokenService;
 import com.sparkleshop.common.security.jwt.LoginUserContext;
+import com.sparkleshop.service.user.dto.profile.AvatarResponse;
 import com.sparkleshop.service.user.dto.profile.ChangePasswordRequest;
 import com.sparkleshop.service.user.dto.profile.UserInfoResponse;
 import com.sparkleshop.service.user.dto.profile.UserProfileUpdateRequest;
 import com.sparkleshop.service.user.entity.ShopUserDO;
 import com.sparkleshop.service.user.mapper.ShopUserMapper;
 import com.sparkleshop.service.user.service.UserProfileService;
+import com.sparkleshop.service.user.support.OssUtils;
 import com.sparkleshop.service.user.support.UserRequestUtils;
 import lombok.RequiredArgsConstructor;
 import org.apache.commons.lang3.StringUtils;
@@ -19,6 +22,7 @@ import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.time.Duration;
 
@@ -36,13 +40,14 @@ public class UserProfileServiceImpl implements UserProfileService {
     private final ObjectMapper objectMapper;
     private final PasswordEncoder passwordEncoder;
     private final JwtTokenService jwtTokenService;
+    private final OssUtils ossUtils;
 
     @Override
     public UserInfoResponse getCurrentUser() {
         Long userId = LoginUserContext.getRequiredUserId();
         String cacheKey = getUserCacheKey(userId);
         String cachedValue = stringRedisTemplate.opsForValue().get(cacheKey);
-        if (StringUtils.isNotBlank(cachedValue)) {
+        if (StrUtil.isNotBlank(cachedValue)) {
             try {
                 return objectMapper.readValue(cachedValue, UserInfoResponse.class);
             } catch (JsonProcessingException ignored) {
@@ -55,7 +60,7 @@ public class UserProfileServiceImpl implements UserProfileService {
         try {
             stringRedisTemplate.opsForValue().set(cacheKey, objectMapper.writeValueAsString(response), USER_CACHE_TTL);
         } catch (JsonProcessingException ignored) {
-            // Ignore cache serialization failures and return the DB result directly.
+            // 无影响
         }
         return response;
     }
@@ -63,7 +68,7 @@ public class UserProfileServiceImpl implements UserProfileService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void updateCurrentUser(UserProfileUpdateRequest request) {
-        if (StringUtils.isAllBlank(request.getNickname(), request.getEmail(), request.getAvatar())) {
+        if (StringUtils.isAllBlank(request.getNickname(), request.getEmail())) {
             throw new BusinessException(INVALID_REQUEST, "至少需要更新一个字段");
         }
         Long userId = LoginUserContext.getRequiredUserId();
@@ -73,7 +78,6 @@ public class UserProfileServiceImpl implements UserProfileService {
         update.setId(userId);
         update.setNickname(normalize(request.getNickname()));
         update.setEmail(normalize(request.getEmail()));
-        update.setAvatar(normalize(request.getAvatar()));
         shopUserMapper.updateById(update);
         evictUserCache(userId);
     }
@@ -97,6 +101,39 @@ public class UserProfileServiceImpl implements UserProfileService {
         shopUserMapper.updateById(update);
         evictUserCache(userId);
         jwtTokenService.blacklist(LoginUserContext.getRequired());
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public AvatarResponse uploadAvatar(MultipartFile file) {
+        Long userId = LoginUserContext.getRequiredUserId();
+        ShopUserDO update = shopUserMapper.selectById(userId);
+        if (update == null) {
+            throw new BusinessException(40400, "用户不存在");
+        }
+        if (file == null || file.isEmpty()) {
+            throw new BusinessException(INVALID_REQUEST, "上传文件不能为空");
+        }
+        String oldAvatar = update.getAvatar();
+        String avatar = ossUtils.upload("avatar", file);
+        try {
+            ShopUserDO avatarUpdate = new ShopUserDO();
+            avatarUpdate.setId(userId);
+            avatarUpdate.setAvatar(avatar);
+            int row = shopUserMapper.updateById(avatarUpdate);
+            if (row == 0) {
+                ossUtils.delete(avatar);
+                throw new BusinessException(50000, "更新用户头像失败");
+            }
+        } catch (RuntimeException exception) {
+            ossUtils.delete(avatar);
+            throw exception;
+        }
+        evictUserCache(userId);
+        if (oldAvatar != null && !oldAvatar.equals(avatar)) {
+            ossUtils.delete(oldAvatar);
+        }
+        return new AvatarResponse(userId, avatar);
     }
 
     private ShopUserDO getRequiredUser(Long userId) {
