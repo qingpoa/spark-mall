@@ -1,23 +1,12 @@
 package com.sparkleshop.common.security.jwt;
 
+import lombok.Data;
+
+@Data
 public class TokenUser {
 
     private Long userId;
-    private String username;
-
-    public Long getUserId() {
-        return userId;
-    }
-
-    public void setUserId(Long userId) {
-        this.userId = userId;
-    }
-
-    public String getUsername() {
-        return username;
-    }
-
-    public void setUsername(String username) {
-        this.username = username;
-    }
+    private Integer userType;
+    private String tokenId;
+    private long expiresAtEpochMilli;
 }

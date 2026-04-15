@@ -31,6 +31,7 @@
         <tomcat.version>10.1.54</tomcat.version>
         <commons.lang3.version>3.20.0</commons.lang3.version>
         <commons.fileupload.version>1.6.0</commons.fileupload.version>
+        <hutool.version>5.8.39</hutool.version>
         <maven.compiler.plugin.version>3.14.0</maven.compiler.plugin.version>
         <maven.surefire.plugin.version>3.5.3</maven.surefire.plugin.version>
     </properties>
@@ -104,6 +105,11 @@
                 <groupId>org.projectlombok</groupId>
                 <artifactId>lombok</artifactId>
                 <version>${lombok.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>cn.hutool</groupId>
+                <artifactId>hutool-core</artifactId>
+                <version>${hutool.version}</version>
             </dependency>
         </dependencies>
     </dependencyManagement>

@@ -29,26 +29,38 @@ spring:
               uri: lb://user-service
               predicates:
                 - Path=/api/v1/user/**
+              filters:
+                - StripPrefix=2
             - id: product-service
               uri: lb://product-service
               predicates:
                 - Path=/api/v1/product/**
+              filters:
+                - StripPrefix=2
             - id: cart-service
               uri: lb://cart-service
               predicates:
                 - Path=/api/v1/cart/**
+              filters:
+                - StripPrefix=2
             - id: order-service
               uri: lb://order-service
               predicates:
                 - Path=/api/v1/order/**
+              filters:
+                - StripPrefix=2
             - id: stock-service
               uri: lb://stock-service
               predicates:
                 - Path=/api/v1/stock/**
+              filters:
+                - StripPrefix=2
             - id: coupon-service
               uri: lb://coupon-service
               predicates:
                 - Path=/api/v1/coupon/**
+              filters:
+                - StripPrefix=2
 management:
   endpoints:
     web:

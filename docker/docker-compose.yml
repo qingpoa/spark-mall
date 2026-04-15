@@ -10,8 +10,6 @@ services:
       TZ: Asia/Shanghai
     ports:
       - "3306:3306"
-    volumes:
-      - ./mysql/init.sql:/docker-entrypoint-initdb.d/init.sql
 
   redis:
     image: redis:7

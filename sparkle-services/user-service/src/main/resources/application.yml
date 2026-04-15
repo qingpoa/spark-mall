@@ -41,6 +41,13 @@ mybatis-plus:
     db-config:
       id-type: auto
 
+app:
+  security:
+    jwt:
+      secret: ${app.security.jwt.secret:change-this-jwt-secret-to-a-secure-value-2026}
+      issuer: ${app.security.jwt.issuer:sparkle-shop}
+      expiration-seconds: ${app.security.jwt.expiration-seconds:7200}
+
 management:
   endpoints:
     web:
