@@ -15,7 +15,6 @@ import com.sparkleshop.service.user.entity.ShopUserDO;
 import com.sparkleshop.service.user.mapper.ShopUserMapper;
 import com.sparkleshop.service.user.service.UserProfileService;
 import com.sparkleshop.service.user.support.OssUtils;
-import com.sparkleshop.service.user.support.UserRequestUtils;
 import lombok.RequiredArgsConstructor;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.data.redis.core.StringRedisTemplate;
@@ -97,7 +96,6 @@ public class UserProfileServiceImpl implements UserProfileService {
         ShopUserDO update = new ShopUserDO();
         update.setId(userId);
         update.setPassword(passwordEncoder.encode(request.getNewPassword()));
-        update.setLoginIp(UserRequestUtils.getClientIp());
         shopUserMapper.updateById(update);
         evictUserCache(userId);
         jwtTokenService.blacklist(LoginUserContext.getRequired());
