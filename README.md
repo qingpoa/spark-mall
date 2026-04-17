@@ -7,7 +7,6 @@
 - `sparkle-common`
   - `common-core`
   - `common-security`
-  - `common-redis`
   - `common-web`
   - `common-log`
 - `sparkle-gateway`
@@ -20,4 +19,3 @@
   - `stock-service`
   - `coupon-service`
 - `docker`
-

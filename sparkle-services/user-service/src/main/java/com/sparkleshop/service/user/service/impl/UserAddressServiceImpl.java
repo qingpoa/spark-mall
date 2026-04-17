@@ -1,8 +1,8 @@
 package com.sparkleshop.service.user.service.impl;
 
 import com.sparkleshop.common.core.exception.BusinessException;
-import com.sparkleshop.common.redis.key.RedisKeys;
 import com.sparkleshop.common.security.jwt.LoginUserContext;
+import com.sparkleshop.service.user.constant.UserRedisKeys;
 import com.sparkleshop.service.user.dto.address.AddressCreateRequest;
 import com.sparkleshop.service.user.dto.address.AddressResponse;
 import com.sparkleshop.service.user.dto.address.AddressUpdateRequest;
@@ -157,7 +157,7 @@ public class UserAddressServiceImpl implements UserAddressService {
     }
 
     private <T> T executeWithDefaultAddressLock(Long userId, Supplier<T> action) {
-        RLock lock = redissonClient.getLock(RedisKeys.USER_ADDRESS_DEFAULT_LOCK + userId);
+        RLock lock = redissonClient.getLock(UserRedisKeys.userAddressDefaultLock(userId));
         lock.lock();
         try {
             return action.get();

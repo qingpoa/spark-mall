@@ -5,8 +5,8 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sparkleshop.common.core.exception.BusinessException;
-import com.sparkleshop.common.redis.key.RedisKeys;
 import com.sparkleshop.service.product.constant.ProductErrorCodes;
+import com.sparkleshop.service.product.constant.ProductRedisKeys;
 import com.sparkleshop.service.product.dto.admin.AdminCategoryCreateRequest;
 import com.sparkleshop.service.product.entity.CategoryDO;
 import com.sparkleshop.service.product.mapper.CategoryMapper;
@@ -18,7 +18,6 @@ import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.Duration;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -28,29 +27,26 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class CategoryServiceImpl implements CategoryService {
 
-    private static final String CATEGORY_TREE_CACHE_KEY = RedisKeys.PRODUCT_CACHE + "category:tree";
-    private static final Duration CATEGORY_TREE_CACHE_TTL = Duration.ofDays(1);
-
     private final CategoryMapper categoryMapper;
     private final StringRedisTemplate stringRedisTemplate;
     private final ObjectMapper objectMapper;
 
     @Override
     public List<ProductCategoryTreeRespVO> getCategoryTree() {
-        String cachedValue = stringRedisTemplate.opsForValue().get(CATEGORY_TREE_CACHE_KEY);
+        String cachedValue = stringRedisTemplate.opsForValue().get(ProductRedisKeys.PRODUCT_CATEGORY_TREE);
         if (StrUtil.isNotBlank(cachedValue)) {
             try {
                 return objectMapper.readValue(cachedValue, new TypeReference<List<ProductCategoryTreeRespVO>>() {
                 });
             } catch (JsonProcessingException ignored) {
-                stringRedisTemplate.delete(CATEGORY_TREE_CACHE_KEY);
+                stringRedisTemplate.delete(ProductRedisKeys.PRODUCT_CATEGORY_TREE);
             }
         }
 
         List<ProductCategoryTreeRespVO> tree = buildTree(categoryMapper.selectEnabledList());
         try {
-            stringRedisTemplate.opsForValue().set(CATEGORY_TREE_CACHE_KEY,
-                    objectMapper.writeValueAsString(tree), CATEGORY_TREE_CACHE_TTL);
+            stringRedisTemplate.opsForValue().set(ProductRedisKeys.PRODUCT_CATEGORY_TREE,
+                    objectMapper.writeValueAsString(tree), ProductRedisKeys.PRODUCT_CATEGORY_TREE_TTL);
         } catch (JsonProcessingException ignored) {
             // 缓存失败不影响主流程
         }
@@ -88,7 +84,7 @@ public class CategoryServiceImpl implements CategoryService {
         category.setStatus(request.getStatus());
         category.setIcon(StrUtil.trimToNull(request.getIcon()));
         categoryMapper.insert(category);
-        stringRedisTemplate.delete(CATEGORY_TREE_CACHE_KEY);
+        stringRedisTemplate.delete(ProductRedisKeys.PRODUCT_CATEGORY_TREE);
         return category.getId();
     }
 

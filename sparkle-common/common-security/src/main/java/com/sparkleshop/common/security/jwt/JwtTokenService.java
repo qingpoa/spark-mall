@@ -1,10 +1,11 @@
 package com.sparkleshop.common.security.jwt;
 
 import cn.hutool.core.util.IdUtil;
+import cn.hutool.core.util.StrUtil;
 import com.sparkleshop.common.core.exception.BusinessException;
-import com.sparkleshop.common.redis.key.RedisKeys;
 import com.sparkleshop.common.security.constant.SecurityConstants;
 import com.sparkleshop.common.security.constant.SecurityErrorCodes;
+import com.sparkleshop.common.security.constant.SecurityRedisKeys;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.ExpiredJwtException;
 import io.jsonwebtoken.Jwts;
@@ -54,7 +55,11 @@ public class JwtTokenService {
         tokenUser.setUserId(claims.get(SecurityConstants.CLAIM_USER_ID, Long.class));
         tokenUser.setUserType(claims.get(SecurityConstants.CLAIM_USER_TYPE, Integer.class));
         tokenUser.setTokenId(tokenId);
+        tokenUser.setIssuedAtEpochMilli(claims.getIssuedAt().getTime());
         tokenUser.setExpiresAtEpochMilli(claims.getExpiration().getTime());
+        if (isInvalidatedByUserLogoutTime(tokenUser)) {
+            throw new BusinessException(SecurityErrorCodes.TOKEN_REVOKED, "登录态已失效");
+        }
         return tokenUser;
     }
 
@@ -67,6 +72,17 @@ public class JwtTokenService {
             return;
         }
         stringRedisTemplate.opsForValue().set(getBlacklistKey(tokenUser.getTokenId()), "1", Duration.ofMillis(ttlMillis));
+    }
+
+    public void invalidateUserTokens(Long userId) {
+        if (userId == null) {
+            return;
+        }
+        stringRedisTemplate.opsForValue().set(
+                getUserLogoutTimeKey(userId),
+                String.valueOf(System.currentTimeMillis()),
+                Duration.ofSeconds(jwtProperties.getExpirationSeconds())
+        );
     }
 
     public String resolveToken(String authorization) {
@@ -98,8 +114,27 @@ public class JwtTokenService {
         return Boolean.TRUE.equals(stringRedisTemplate.hasKey(getBlacklistKey(tokenId)));
     }
 
+    private boolean isInvalidatedByUserLogoutTime(TokenUser tokenUser) {
+        if (tokenUser == null || tokenUser.getUserId() == null) {
+            return false;
+        }
+        String logoutTime = stringRedisTemplate.opsForValue().get(getUserLogoutTimeKey(tokenUser.getUserId()));
+        if (StrUtil.isBlank(logoutTime)) {
+            return false;
+        }
+        try {
+            return tokenUser.getIssuedAtEpochMilli() <= Long.parseLong(logoutTime);
+        } catch (NumberFormatException ignored) {
+            return false;
+        }
+    }
+
     private String getBlacklistKey(String tokenId) {
-        return RedisKeys.JWT_BLACKLIST + tokenId;
+        return SecurityRedisKeys.jwtBlacklist(tokenId);
+    }
+
+    private String getUserLogoutTimeKey(Long userId) {
+        return SecurityRedisKeys.authUserLogoutTime(userId);
     }
 
     private SecretKey getSigningKey() {

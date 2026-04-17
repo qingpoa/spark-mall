@@ -2,6 +2,7 @@ package com.sparkleshop.service.product.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sparkleshop.service.product.dto.admin.AdminSpuCreateRequest;
+import com.sparkleshop.service.product.constant.ProductRedisKeys;
 import com.sparkleshop.service.product.entity.BrandDO;
 import com.sparkleshop.service.product.entity.CategoryDO;
 import com.sparkleshop.service.product.entity.SkuDO;
@@ -92,6 +93,6 @@ class ProductAdminServiceImplTest {
         verify(spuMapper).insert(any(SpuDO.class));
         verify(skuMapper).insert(any(SkuDO.class));
         verify(skuStockMapper).insert(any(SkuStockDO.class));
-        verify(stringRedisTemplate).delete("sparkle:product:hot:list");
+        verify(stringRedisTemplate).delete(ProductRedisKeys.PRODUCT_HOT_LIST);
     }
 }

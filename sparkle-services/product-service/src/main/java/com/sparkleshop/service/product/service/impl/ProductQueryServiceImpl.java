@@ -5,8 +5,8 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sparkleshop.common.core.exception.BusinessException;
-import com.sparkleshop.common.redis.key.RedisKeys;
 import com.sparkleshop.service.product.constant.ProductErrorCodes;
+import com.sparkleshop.service.product.constant.ProductRedisKeys;
 import com.sparkleshop.service.product.dto.ProductPageQueryDTO;
 import com.sparkleshop.service.product.entity.BrandDO;
 import com.sparkleshop.service.product.entity.CategoryDO;
@@ -28,7 +28,6 @@ import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
-import java.time.Duration;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -47,11 +46,6 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class ProductQueryServiceImpl implements ProductQueryService {
 
-    private static final String PRODUCT_DETAIL_CACHE_KEY_PREFIX = RedisKeys.PRODUCT_CACHE + "detail:";
-    private static final String HOT_PRODUCT_CACHE_KEY = RedisKeys.PRODUCT_CACHE + "hot:list";
-    private static final Duration PRODUCT_DETAIL_CACHE_TTL = Duration.ofHours(12);
-    private static final Duration HOT_PRODUCT_CACHE_TTL = Duration.ofHours(1);
-    private static final Duration NULL_PRODUCT_CACHE_TTL = Duration.ofMinutes(5);
     private static final String NULL_CACHE_VALUE = "__NULL__";
     private static final int DEFAULT_HOT_LIMIT = 10;
     private static final int MAX_HOT_LIMIT = 20;
@@ -104,7 +98,7 @@ public class ProductQueryServiceImpl implements ProductQueryService {
 
     @Override
     public ProductDetailRespVO getProductDetail(Long skuId) {
-        String cacheKey = PRODUCT_DETAIL_CACHE_KEY_PREFIX + skuId;
+        String cacheKey = ProductRedisKeys.productDetail(skuId);
         String cachedValue = stringRedisTemplate.opsForValue().get(cacheKey);
         if (StrUtil.isNotBlank(cachedValue)) {
             if (NULL_CACHE_VALUE.equals(cachedValue)) {
@@ -160,7 +154,7 @@ public class ProductQueryServiceImpl implements ProductQueryService {
 
         try {
             stringRedisTemplate.opsForValue().set(cacheKey,
-                    objectMapper.writeValueAsString(response), PRODUCT_DETAIL_CACHE_TTL);
+                    objectMapper.writeValueAsString(response), ProductRedisKeys.PRODUCT_DETAIL_TTL);
         } catch (JsonProcessingException ignored) {
             // ignore
         }
@@ -170,14 +164,14 @@ public class ProductQueryServiceImpl implements ProductQueryService {
     @Override
     public List<ProductHotRespVO> getHotProducts(Integer limit) {
         int actualLimit = normalizeHotLimit(limit);
-        String cachedValue = stringRedisTemplate.opsForValue().get(HOT_PRODUCT_CACHE_KEY);
+        String cachedValue = stringRedisTemplate.opsForValue().get(ProductRedisKeys.PRODUCT_HOT_LIST);
         if (StrUtil.isNotBlank(cachedValue)) {
             try {
                 List<ProductHotRespVO> cachedList = objectMapper.readValue(cachedValue, new TypeReference<List<ProductHotRespVO>>() {
                 });
                 return cachedList.subList(0, Math.min(actualLimit, cachedList.size()));
             } catch (JsonProcessingException ignored) {
-                stringRedisTemplate.delete(HOT_PRODUCT_CACHE_KEY);
+                stringRedisTemplate.delete(ProductRedisKeys.PRODUCT_HOT_LIST);
             }
         }
 
@@ -198,8 +192,8 @@ public class ProductQueryServiceImpl implements ProductQueryService {
                 .toList();
 
         try {
-            stringRedisTemplate.opsForValue().set(HOT_PRODUCT_CACHE_KEY,
-                    objectMapper.writeValueAsString(fullList), HOT_PRODUCT_CACHE_TTL);
+            stringRedisTemplate.opsForValue().set(ProductRedisKeys.PRODUCT_HOT_LIST,
+                    objectMapper.writeValueAsString(fullList), ProductRedisKeys.PRODUCT_HOT_LIST_TTL);
         } catch (JsonProcessingException ignored) {
             // ignore
         }
@@ -408,7 +402,7 @@ public class ProductQueryServiceImpl implements ProductQueryService {
     }
 
     private void cacheNullProduct(String cacheKey) {
-        stringRedisTemplate.opsForValue().set(cacheKey, NULL_CACHE_VALUE, NULL_PRODUCT_CACHE_TTL);
+        stringRedisTemplate.opsForValue().set(cacheKey, NULL_CACHE_VALUE, ProductRedisKeys.PRODUCT_NULL_TTL);
     }
 
     @Data

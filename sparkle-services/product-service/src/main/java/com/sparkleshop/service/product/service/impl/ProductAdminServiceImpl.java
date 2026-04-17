@@ -5,8 +5,8 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sparkleshop.common.core.exception.BusinessException;
-import com.sparkleshop.common.redis.key.RedisKeys;
 import com.sparkleshop.service.product.constant.ProductErrorCodes;
+import com.sparkleshop.service.product.constant.ProductRedisKeys;
 import com.sparkleshop.service.product.dto.admin.AdminSpuCreateRequest;
 import com.sparkleshop.service.product.dto.admin.AdminSpuPageQueryDTO;
 import com.sparkleshop.service.product.entity.BrandDO;
@@ -35,8 +35,6 @@ import java.util.stream.Collectors;
 @Service
 @RequiredArgsConstructor
 public class ProductAdminServiceImpl implements ProductAdminService {
-
-    private static final String HOT_PRODUCT_CACHE_KEY = RedisKeys.PRODUCT_CACHE + "hot:list";
 
     private final SpuMapper spuMapper;
     private final SkuMapper skuMapper;
@@ -116,7 +114,7 @@ public class ProductAdminServiceImpl implements ProductAdminService {
             skuStockMapper.insert(stockDO);
         }
 
-        stringRedisTemplate.delete(HOT_PRODUCT_CACHE_KEY);
+        stringRedisTemplate.delete(ProductRedisKeys.PRODUCT_HOT_LIST);
         return spu.getId();
     }
 

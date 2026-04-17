@@ -4,9 +4,9 @@ import cn.hutool.core.util.StrUtil;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sparkleshop.common.core.exception.BusinessException;
-import com.sparkleshop.common.redis.key.RedisKeys;
 import com.sparkleshop.common.security.jwt.JwtTokenService;
 import com.sparkleshop.common.security.jwt.LoginUserContext;
+import com.sparkleshop.service.user.constant.UserRedisKeys;
 import com.sparkleshop.service.user.dto.profile.AvatarResponse;
 import com.sparkleshop.service.user.dto.profile.ChangePasswordRequest;
 import com.sparkleshop.service.user.dto.profile.UserInfoResponse;
@@ -98,6 +98,7 @@ public class UserProfileServiceImpl implements UserProfileService {
         update.setPassword(passwordEncoder.encode(request.getNewPassword()));
         shopUserMapper.updateById(update);
         evictUserCache(userId);
+        jwtTokenService.invalidateUserTokens(userId);
         jwtTokenService.blacklist(LoginUserContext.getRequired());
     }
 
@@ -160,7 +161,7 @@ public class UserProfileServiceImpl implements UserProfileService {
     }
 
     private String getUserCacheKey(Long userId) {
-        return RedisKeys.USER_INFO + userId;
+        return UserRedisKeys.userInfo(userId);
     }
 
     private String normalize(String value) {

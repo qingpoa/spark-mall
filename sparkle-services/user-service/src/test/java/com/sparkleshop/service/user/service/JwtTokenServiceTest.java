@@ -47,6 +47,8 @@ class JwtTokenServiceTest {
     void shouldAuthenticateWhenTokenIsValidAndNotBlacklisted() {
         JwtToken jwtToken = jwtTokenService.generateToken(1L, UserTypeEnum.MEMBER.getCode());
         when(stringRedisTemplate.hasKey(anyString())).thenReturn(false);
+        when(stringRedisTemplate.opsForValue()).thenReturn(valueOperations);
+        when(valueOperations.get(anyString())).thenReturn(null);
 
         TokenUser tokenUser = jwtTokenService.authenticate("Bearer " + jwtToken.getToken());
 
@@ -73,5 +75,15 @@ class JwtTokenServiceTest {
         jwtTokenService.blacklist(tokenUser);
 
         verify(valueOperations).set(anyString(), anyString(), any(Duration.class));
+    }
+
+    @Test
+    void shouldRejectTokenInvalidatedByUserLogoutTime() {
+        JwtToken jwtToken = jwtTokenService.generateToken(1L, UserTypeEnum.MEMBER.getCode());
+        when(stringRedisTemplate.hasKey(anyString())).thenReturn(false);
+        when(stringRedisTemplate.opsForValue()).thenReturn(valueOperations);
+        when(valueOperations.get(anyString())).thenReturn(String.valueOf(System.currentTimeMillis()));
+
+        assertThrows(BusinessException.class, () -> jwtTokenService.authenticate("Bearer " + jwtToken.getToken()));
     }
 }
