@@ -45,4 +45,5 @@ public interface SpuMapper extends BaseMapper<SpuDO> {
         }
         return selectPage(page, wrapper);
     }
+
 }

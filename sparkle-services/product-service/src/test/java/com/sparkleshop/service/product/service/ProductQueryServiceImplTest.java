@@ -15,6 +15,7 @@ import com.sparkleshop.service.product.service.impl.ProductQueryServiceImpl;
 import com.sparkleshop.service.product.vo.ProductDetailRespVO;
 import com.sparkleshop.service.product.vo.ProductHotRespVO;
 import com.sparkleshop.service.product.vo.ProductPageRespVO;
+import com.sparkleshop.service.product.vo.ProductSkuSnapshotRespVO;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -27,7 +28,9 @@ import java.math.BigDecimal;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyCollection;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -128,6 +131,31 @@ class ProductQueryServiceImplTest {
 
         assertEquals(9L, response.getSkuId());
         assertEquals("缓存商品", response.getName());
+    }
+
+    @Test
+    void shouldReturnSkuSnapshotsAndMarkUnavailableSku() {
+        when(skuMapper.selectByIds(anyCollection())).thenReturn(List.of(
+                buildSku(11L, 1L, "苹果 5斤", "{\"规格\":\"5斤装\"}", new BigDecimal("39.90"), "apple.jpg"),
+                buildSku(12L, 2L, "芒果 3斤", "{\"规格\":\"3斤装\"}", new BigDecimal("29.90"), "mango.jpg")
+        ));
+        SpuDO apple = buildSpu(1L, "苹果", 100, 1, 0);
+        SpuDO mango = buildSpu(2L, "芒果", 50, 0, 1);
+        mango.setStatus(0);
+        when(spuMapper.selectByIds(anyCollection())).thenReturn(List.of(apple, mango));
+        when(skuStockMapper.selectBySkuIds(anyCollection())).thenReturn(List.of(
+                buildStock(11L, 10, 0),
+                buildStock(12L, 8, 0)
+        ));
+
+        List<ProductSkuSnapshotRespVO> response = productQueryService.getSkuSnapshots(List.of(12L, 11L));
+
+        assertEquals(2, response.size());
+        assertEquals(12L, response.get(0).getSkuId());
+        assertFalse(response.get(0).getAvailable());
+        assertEquals("芒果", response.get(0).getSpuName());
+        assertEquals(11L, response.get(1).getSkuId());
+        assertTrue(response.get(1).getAvailable());
     }
 
     private SpuDO buildSpu(Long id, String name, int salesCount, int isHot, int isNew) {

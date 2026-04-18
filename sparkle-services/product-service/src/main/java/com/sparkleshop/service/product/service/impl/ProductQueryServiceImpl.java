@@ -22,6 +22,7 @@ import com.sparkleshop.service.product.service.ProductQueryService;
 import com.sparkleshop.service.product.vo.ProductDetailRespVO;
 import com.sparkleshop.service.product.vo.ProductHotRespVO;
 import com.sparkleshop.service.product.vo.ProductPageRespVO;
+import com.sparkleshop.service.product.vo.ProductSkuSnapshotRespVO;
 import lombok.Data;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.redis.core.StringRedisTemplate;
@@ -198,6 +199,54 @@ public class ProductQueryServiceImpl implements ProductQueryService {
             // ignore
         }
         return fullList.subList(0, Math.min(actualLimit, fullList.size()));
+    }
+
+    @Override
+    public List<ProductSkuSnapshotRespVO> getSkuSnapshots(Collection<Long> skuIds) {
+        if (skuIds == null || skuIds.isEmpty()) {
+            return Collections.emptyList();
+        }
+
+        List<Long> orderedSkuIds = skuIds.stream()
+                .filter(Objects::nonNull)
+                .distinct()
+                .toList();
+        if (orderedSkuIds.isEmpty()) {
+            return Collections.emptyList();
+        }
+
+        Map<Long, SkuDO> skuMap = skuMapper.selectByIds(orderedSkuIds).stream()
+                .collect(Collectors.toMap(SkuDO::getId, Function.identity(), (left, right) -> left));
+        if (skuMap.isEmpty()) {
+            return Collections.emptyList();
+        }
+
+        Map<Long, SpuDO> spuMap = spuMapper.selectByIds(extractIds(new ArrayList<>(skuMap.values()), SkuDO::getSpuId)).stream()
+                .collect(Collectors.toMap(SpuDO::getId, Function.identity(), (left, right) -> left));
+        Map<Long, SkuStockDO> stockMap = groupStockBySkuId(skuStockMapper.selectBySkuIds(orderedSkuIds));
+
+        List<ProductSkuSnapshotRespVO> responseList = new ArrayList<>();
+        for (Long skuId : orderedSkuIds) {
+            SkuDO sku = skuMap.get(skuId);
+            if (sku == null) {
+                continue;
+            }
+
+            SpuDO spu = spuMap.get(sku.getSpuId());
+            SkuStockDO stock = stockMap.get(skuId);
+
+            ProductSkuSnapshotRespVO response = new ProductSkuSnapshotRespVO();
+            response.setSkuId(sku.getId());
+            response.setSpuId(sku.getSpuId());
+            response.setSpuName(spu == null ? sku.getName() : spu.getName());
+            response.setImage(firstNonBlank(sku.getImage(), spu == null ? null : spu.getMainImage()));
+            response.setSpec(parseJsonMap(sku.getSpecJson()));
+            response.setPrice(sku.getPrice());
+            response.setStock(getAvailableStock(stock));
+            response.setAvailable(isSnapshotAvailable(sku, spu, stock));
+            responseList.add(response);
+        }
+        return responseList;
     }
 
     private ProductPageRespVO emptyPage(ProductPageQueryDTO queryDTO) {
@@ -384,6 +433,14 @@ public class ProductQueryServiceImpl implements ProductQueryService {
             return 0;
         }
         return Math.max(0, defaultInt(stock.getStock()) - defaultInt(stock.getLockedStock()));
+    }
+
+    private boolean isSnapshotAvailable(SkuDO sku, SpuDO spu, SkuStockDO stock) {
+        return sku != null
+                && Objects.equals(sku.getStatus(), 1)
+                && spu != null
+                && Objects.equals(spu.getStatus(), 1)
+                && getAvailableStock(stock) > 0;
     }
 
     private int defaultInt(Integer value) {

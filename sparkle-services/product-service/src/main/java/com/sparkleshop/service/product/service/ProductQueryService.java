@@ -4,7 +4,9 @@ import com.sparkleshop.service.product.dto.ProductPageQueryDTO;
 import com.sparkleshop.service.product.vo.ProductDetailRespVO;
 import com.sparkleshop.service.product.vo.ProductHotRespVO;
 import com.sparkleshop.service.product.vo.ProductPageRespVO;
+import com.sparkleshop.service.product.vo.ProductSkuSnapshotRespVO;
 
+import java.util.Collection;
 import java.util.List;
 
 public interface ProductQueryService {
@@ -14,4 +16,6 @@ public interface ProductQueryService {
     ProductDetailRespVO getProductDetail(Long skuId);
 
     List<ProductHotRespVO> getHotProducts(Integer limit);
+
+    List<ProductSkuSnapshotRespVO> getSkuSnapshots(Collection<Long> skuIds);
 }

@@ -37,4 +37,5 @@ public interface SkuMapper extends BaseMapper<SkuDO> {
                 .eq(SkuDO::getStatus, 1)
                 .orderByAsc(SkuDO::getPrice, SkuDO::getId));
     }
+
 }
