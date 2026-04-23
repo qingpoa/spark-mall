@@ -1,6 +1,7 @@
 package com.sparkleshop.service.user.service;
 
 import com.sparkleshop.service.user.dto.address.AddressCreateRequest;
+import com.sparkleshop.service.user.dto.address.AddressDetailResponse;
 import com.sparkleshop.service.user.dto.address.AddressResponse;
 import com.sparkleshop.service.user.dto.address.AddressUpdateRequest;
 
@@ -17,4 +18,6 @@ public interface UserAddressService {
     void deleteCurrentUserAddress(Long addressId);
 
     void setCurrentUserDefaultAddress(Long addressId);
+
+    AddressDetailResponse getAddressDetail(Long userId, Long addressId);
 }

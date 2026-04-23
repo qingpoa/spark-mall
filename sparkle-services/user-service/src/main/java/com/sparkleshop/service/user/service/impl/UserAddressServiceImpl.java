@@ -1,9 +1,11 @@
 package com.sparkleshop.service.user.service.impl;
 
 import com.sparkleshop.common.core.exception.BusinessException;
+import com.sparkleshop.common.core.model.Result;
 import com.sparkleshop.common.security.jwt.LoginUserContext;
 import com.sparkleshop.service.user.constant.UserRedisKeys;
 import com.sparkleshop.service.user.dto.address.AddressCreateRequest;
+import com.sparkleshop.service.user.dto.address.AddressDetailResponse;
 import com.sparkleshop.service.user.dto.address.AddressResponse;
 import com.sparkleshop.service.user.dto.address.AddressUpdateRequest;
 import com.sparkleshop.service.user.entity.UserAddressDO;
@@ -17,6 +19,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Supplier;
 
 import static com.sparkleshop.service.user.constant.UserErrorCodes.ADDRESS_NOT_FOUND;
@@ -24,6 +27,8 @@ import static com.sparkleshop.service.user.constant.UserErrorCodes.ADDRESS_NOT_F
 @Service
 @RequiredArgsConstructor
 public class UserAddressServiceImpl implements UserAddressService {
+
+    private static final long DEFAULT_ADDRESS_LOCK_WAIT_SECONDS = 3L;
 
     private final UserAddressMapper userAddressMapper;
     private final RedissonClient redissonClient;
@@ -123,6 +128,21 @@ public class UserAddressServiceImpl implements UserAddressService {
         });
     }
 
+    @Override
+    public AddressDetailResponse getAddressDetail(Long userId, Long addressId) {
+        UserAddressDO address = getRequiredAddress(addressId, userId);
+        AddressDetailResponse response = new AddressDetailResponse();
+        response.setId(address.getId());
+        response.setUserId(address.getUserId());
+        response.setReceiverName(address.getReceiverName());
+        response.setReceiverMobile(address.getReceiverMobile());
+        response.setProvince(address.getProvince());
+        response.setCity(address.getCity());
+        response.setDistrict(address.getDistrict());
+        response.setDetailAddress(address.getDetailAddress());
+        return response;
+    }
+
     private UserAddressDO getRequiredAddress(Long addressId, Long userId) {
         UserAddressDO address = userAddressMapper.selectByIdAndUserId(addressId, userId);
         if (address == null) {
@@ -158,11 +178,18 @@ public class UserAddressServiceImpl implements UserAddressService {
 
     private <T> T executeWithDefaultAddressLock(Long userId, Supplier<T> action) {
         RLock lock = redissonClient.getLock(UserRedisKeys.userAddressDefaultLock(userId));
-        lock.lock();
         try {
+            if (!lock.tryLock(DEFAULT_ADDRESS_LOCK_WAIT_SECONDS, TimeUnit.SECONDS)) {
+                throw new BusinessException(Result.CONFLICT, "操作频繁，请稍后再试");
+            }
             return action.get();
+        } catch (InterruptedException exception) {
+            Thread.currentThread().interrupt();
+            throw new BusinessException(Result.SERVER_ERROR, "默认地址操作被中断");
         } finally {
-            lock.unlock();
+            if (lock.isHeldByCurrentThread()) {
+                lock.unlock();
+            }
         }
     }
 }

@@ -1,7 +1,6 @@
 package com.sparkleshop.service.user.controller;
 
 import com.sparkleshop.common.core.model.Result;
-import com.sparkleshop.common.security.annotation.RequireLogin;
 import com.sparkleshop.common.web.util.Results;
 import com.sparkleshop.service.user.dto.auth.LoginRequest;
 import com.sparkleshop.service.user.dto.auth.RegisterRequest;
@@ -33,7 +32,6 @@ public class UserAuthController {
         return Results.ok(userAuthService.login(request));
     }
 
-    @RequireLogin
     @PostMapping("/logout")
     public ResponseEntity<Result> logout() {
         userAuthService.logout();

@@ -238,6 +238,7 @@ public class ProductQueryServiceImpl implements ProductQueryService {
             ProductSkuSnapshotRespVO response = new ProductSkuSnapshotRespVO();
             response.setSkuId(sku.getId());
             response.setSpuId(sku.getSpuId());
+            response.setSkuName(sku.getName());
             response.setSpuName(spu == null ? sku.getName() : spu.getName());
             response.setImage(firstNonBlank(sku.getImage(), spu == null ? null : spu.getMainImage()));
             response.setSpec(parseJsonMap(sku.getSpecJson()));

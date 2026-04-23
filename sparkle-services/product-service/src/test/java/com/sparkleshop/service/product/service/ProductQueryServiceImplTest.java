@@ -152,9 +152,11 @@ class ProductQueryServiceImplTest {
 
         assertEquals(2, response.size());
         assertEquals(12L, response.get(0).getSkuId());
+        assertEquals("芒果 3斤", response.get(0).getSkuName());
         assertFalse(response.get(0).getAvailable());
         assertEquals("芒果", response.get(0).getSpuName());
         assertEquals(11L, response.get(1).getSkuId());
+        assertEquals("苹果 5斤", response.get(1).getSkuName());
         assertTrue(response.get(1).getAvailable());
     }
 

@@ -1,7 +1,6 @@
 package com.sparkleshop.service.user.controller;
 
 import com.sparkleshop.common.core.model.Result;
-import com.sparkleshop.common.security.annotation.RequireLogin;
 import com.sparkleshop.common.web.util.Results;
 import com.sparkleshop.service.user.dto.admin.AdminUserPageRequest;
 import com.sparkleshop.service.user.dto.admin.AdminUserStatusUpdateRequest;
@@ -25,13 +24,11 @@ public class AdminUserController {
 
     private final AdminUserService adminUserService;
 
-    @RequireLogin
     @GetMapping("/list")
     public ResponseEntity<Result> getUserPage(AdminUserPageRequest request) {
         return Results.ok(adminUserService.getUserPage(request));
     }
 
-    @RequireLogin
     @PutMapping("/{userId}/status")
     public ResponseEntity<Result> updateUserStatus(@PathVariable("userId") Long userId,
                                                    @Valid @RequestBody AdminUserStatusUpdateRequest request) {

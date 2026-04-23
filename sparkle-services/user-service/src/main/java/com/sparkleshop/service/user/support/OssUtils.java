@@ -96,4 +96,5 @@ public class OssUtils {
             throw new BusinessException(Result.BAD_REQUEST, "图片校验失败");
         }
     }
+
 }

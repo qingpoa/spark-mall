@@ -1,7 +1,6 @@
 package com.sparkleshop.service.product.controller.admin;
 
 import com.sparkleshop.common.core.model.Result;
-import com.sparkleshop.common.security.annotation.RequireLogin;
 import com.sparkleshop.common.web.util.Results;
 import com.sparkleshop.service.product.dto.admin.AdminCategoryCreateRequest;
 import com.sparkleshop.service.product.service.CategoryService;
@@ -15,7 +14,6 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
-@RequireLogin
 @RequiredArgsConstructor
 @RequestMapping("/admin/product/category")
 public class AdminProductCategoryController {

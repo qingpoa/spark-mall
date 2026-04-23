@@ -1,7 +1,6 @@
 package com.sparkleshop.service.product.controller.admin;
 
 import com.sparkleshop.common.core.model.Result;
-import com.sparkleshop.common.security.annotation.RequireLogin;
 import com.sparkleshop.common.web.util.Results;
 import com.sparkleshop.service.product.dto.admin.AdminSpuCreateRequest;
 import com.sparkleshop.service.product.dto.admin.AdminSpuPageQueryDTO;
@@ -18,7 +17,6 @@ import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 @Validated
-@RequireLogin
 @RequiredArgsConstructor
 @RequestMapping("/admin/product/spu")
 public class AdminProductSpuController {

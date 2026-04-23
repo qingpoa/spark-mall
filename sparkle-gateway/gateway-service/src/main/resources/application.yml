@@ -4,10 +4,19 @@ server:
 spring:
   application:
     name: gateway-service
+  main:
+    web-application-type: reactive
   profiles:
     active: ${SPRING_PROFILES_ACTIVE:local}
   config:
     import: optional:classpath:application-${spring.profiles.active}-private.yml
+  data:
+    redis:
+      host: ${app.redis.host}
+      port: ${app.redis.port}
+      password: ${app.redis.password:}
+      database: ${app.redis.database:0}
+      timeout: ${app.redis.timeout:5s}
   cloud:
     nacos:
       discovery:
@@ -34,7 +43,7 @@ spring:
             - id: product-service
               uri: lb://product-service
               predicates:
-                - Path=/api/v1/product/**
+                - Path=/api/v1/product/list,/api/v1/product/hot,/api/v1/product/*,/api/v1/product/category/**,/api/v1/product/brand/**
               filters:
                 - StripPrefix=2
             - id: cart-service
@@ -61,6 +70,23 @@ spring:
                 - Path=/api/v1/coupon/**
               filters:
                 - StripPrefix=2
+
+app:
+  security:
+    jwt:
+      secret: change-this-jwt-secret-to-a-secure-value-2026
+      issuer: sparkle-shop
+      expiration-seconds: 7200
+    gateway:
+      whitelist:
+        - /api/v1/user/register
+        - /api/v1/user/login
+        - /api/v1/product/list
+        - /api/v1/product/hot
+        - /api/v1/product/*
+        - /api/v1/product/category/**
+        - /api/v1/product/brand/**
+
 management:
   endpoints:
     web:
