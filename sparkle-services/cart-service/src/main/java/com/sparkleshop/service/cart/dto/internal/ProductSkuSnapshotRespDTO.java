@@ -1,4 +1,4 @@
-package com.sparkleshop.service.cart.vo;
+package com.sparkleshop.service.cart.dto.internal;
 
 import lombok.Data;
 
@@ -6,13 +6,15 @@ import java.math.BigDecimal;
 import java.util.Map;
 
 @Data
-public class CartItemRespVO {
+public class ProductSkuSnapshotRespDTO {
 
     private Long skuId;
 
     private Long spuId;
 
-    private String name;
+    private String skuName;
+
+    private String spuName;
 
     private String image;
 
@@ -20,13 +22,7 @@ public class CartItemRespVO {
 
     private BigDecimal price;
 
-    private Integer quantity;
-
-    private Boolean selected;
-
     private Integer stock;
 
     private Boolean available;
-
-    private BigDecimal subtotal;
 }
