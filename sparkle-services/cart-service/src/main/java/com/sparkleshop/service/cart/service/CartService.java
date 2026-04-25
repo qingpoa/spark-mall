@@ -6,7 +6,8 @@ import com.sparkleshop.service.cart.dto.CartSelectRequest;
 import com.sparkleshop.service.cart.dto.CartUpdateRequest;
 import com.sparkleshop.service.cart.vo.CartAddRespVO;
 import com.sparkleshop.service.cart.vo.CartListRespVO;
-import jakarta.validation.Valid;
+
+import java.util.List;
 
 public interface CartService {
 
@@ -21,4 +22,6 @@ public interface CartService {
     void selectCartItem(CartSelectRequest cartSelectReqVO);
 
     void selectAllCartItem(CartSelectAllRequest select);
+
+    void clearCheckedItems(Long userId, List<Long> skuIds);
 }

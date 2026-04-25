@@ -300,6 +300,23 @@ public class CartServiceImpl implements CartService {
         });
     }
 
+    @Override
+    public void clearCheckedItems(Long userId, List<Long> skuIds) {
+        if (userId == null || skuIds == null || skuIds.isEmpty()) {
+            return;
+        }
+
+        String redisKey = CartRedisKeys.cart(userId);
+        Object[] fields = skuIds.stream()
+                .filter(Objects::nonNull)
+                .map(String::valueOf)
+                .toArray();
+        if (fields.length == 0) {
+            return;
+        }
+        stringRedisTemplate.opsForHash().delete(redisKey, fields);
+    }
+
     private List<ProductSkuSnapshotRespDTO> getProductSnapshots(List<Long> skuIds) {
         if (skuIds == null || skuIds.isEmpty()) {
             return Collections.emptyList();
