@@ -1,6 +1,7 @@
 package com.sparkleshop.service.order.service.impl;
 
 import cn.hutool.core.util.RandomUtil;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sparkleshop.common.core.exception.BusinessException;
@@ -13,6 +14,7 @@ import com.sparkleshop.service.order.api.stock.StockFeignClient;
 import com.sparkleshop.service.order.api.user.UserFeignClient;
 import com.sparkleshop.service.order.constant.OrderErrorCodes;
 import com.sparkleshop.service.order.constant.OrderRedisKeys;
+import com.sparkleshop.service.order.dto.OrderListQueryRequest;
 import com.sparkleshop.service.order.dto.SubmitOrderItemRequest;
 import com.sparkleshop.service.order.dto.SubmitOrderRequest;
 import com.sparkleshop.service.order.dto.internal.cart.CartClearItemsRequest;
@@ -33,6 +35,7 @@ import com.sparkleshop.service.order.mapper.OrderItemMapper;
 import com.sparkleshop.service.order.mapper.OrderMapper;
 import com.sparkleshop.service.order.mapper.OrderOperateLogMapper;
 import com.sparkleshop.service.order.service.OrderService;
+import com.sparkleshop.service.order.vo.OrderListRespVO;
 import com.sparkleshop.service.order.vo.OrderSubmitTokenRespVO;
 import com.sparkleshop.service.order.vo.SubmitOrderRespVO;
 import cn.hutool.core.lang.UUID;
@@ -49,10 +52,12 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -89,6 +94,65 @@ public class OrderServiceImpl implements OrderService {
 
         OrderSubmitTokenRespVO response = new OrderSubmitTokenRespVO();
         response.setSubmitToken(submitToken);
+        return response;
+    }
+
+    @Override
+    public OrderListRespVO getOrderList(OrderListQueryRequest request) {
+        Long userId = LoginUserContext.getRequiredUserId();
+        Integer status = request.getStatus();
+        Page<OrderDO> page = new Page<>(request.getPageNo(), request.getPageSize());
+        Page<OrderDO> orderPage = orderMapper.selectUserOrderPage(page, userId, status);
+
+        OrderListRespVO response = new OrderListRespVO();
+        response.setTotal(orderPage.getTotal());
+        response.setPageNo(orderPage.getCurrent());
+        response.setPageSize(orderPage.getSize());
+
+        List<OrderDO> orders = orderPage.getRecords();
+        if (orders == null || orders.isEmpty()) {
+            response.setList(Collections.emptyList());
+            return response;
+        }
+
+        List<Long> orderIds = orders.stream()
+                .map(OrderDO::getId)
+                .toList();
+        List<OrderItemDO> orderItems = orderItemMapper.selectByOrderIds(orderIds);
+        Map<Long, List<OrderItemDO>> orderItemMap = orderItems.stream()
+                .collect(Collectors.groupingBy(OrderItemDO::getOrderId, LinkedHashMap::new, Collectors.toList()));
+
+        List<OrderListRespVO.Item> list = new ArrayList<>(orders.size());
+        for (OrderDO order : orders) {
+            OrderListRespVO.Item item = new OrderListRespVO.Item();
+            item.setOrderId(order.getId());
+            item.setOrderNo(order.getOrderNo());
+            item.setStatus(order.getStatus());
+            item.setActualAmount(order.getActualAmount());
+            item.setCreateTime(order.getCreateTime());
+
+            List<OrderItemDO> currentOrderItems = orderItemMap.getOrDefault(order.getId(), Collections.emptyList());
+            item.setItemCount(currentOrderItems.stream()
+                    .map(OrderItemDO::getQuantity)
+                    .filter(quantity -> quantity != null && quantity > 0)
+                    .reduce(0, Integer::sum));
+
+            List<OrderListRespVO.OrderItem> summaries = new ArrayList<>(currentOrderItems.size());
+            for (OrderItemDO orderItem : currentOrderItems) {
+                OrderListRespVO.OrderItem summary = new OrderListRespVO.OrderItem();
+                summary.setSkuId(orderItem.getSkuId());
+                summary.setSkuName(orderItem.getSkuName());
+                summary.setQuantity(orderItem.getQuantity());
+                summary.setPrice(orderItem.getPrice());
+                summary.setTotalPrice(orderItem.getTotalPrice());
+                summaries.add(summary);
+            }
+
+            item.setItems(summaries);
+            list.add(item);
+        }
+
+        response.setList(list);
         return response;
     }
 

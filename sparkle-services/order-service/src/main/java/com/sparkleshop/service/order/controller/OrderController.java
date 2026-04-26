@@ -2,6 +2,7 @@ package com.sparkleshop.service.order.controller;
 
 import com.sparkleshop.common.core.model.Result;
 import com.sparkleshop.common.web.util.Results;
+import com.sparkleshop.service.order.dto.OrderListQueryRequest;
 import com.sparkleshop.service.order.dto.SubmitOrderRequest;
 import com.sparkleshop.service.order.service.OrderService;
 import jakarta.validation.Valid;
@@ -25,6 +26,11 @@ public class OrderController {
     @GetMapping("/submit/token")
     public ResponseEntity<Result> generateSubmitToken() {
         return Results.ok(orderService.generateSubmitToken());
+    }
+
+    @GetMapping("/list")
+    public ResponseEntity<Result> getOrderList(@Valid OrderListQueryRequest request) {
+        return Results.ok(orderService.getOrderList(request));
     }
 
     @PostMapping("/submit")
