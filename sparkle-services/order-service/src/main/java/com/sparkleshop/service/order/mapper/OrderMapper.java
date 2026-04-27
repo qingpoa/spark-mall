@@ -8,6 +8,7 @@ import com.sparkleshop.service.order.entity.OrderDO;
 import org.apache.ibatis.annotations.Mapper;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 @Mapper
 public interface OrderMapper extends BaseMapper<OrderDO> {
@@ -31,6 +32,14 @@ public interface OrderMapper extends BaseMapper<OrderDO> {
                 .last("limit 1"));
     }
 
+    default List<OrderDO> selectExpiredPendingOrders(LocalDateTime now, int limit) {
+        return selectList(new LambdaQueryWrapper<OrderDO>()
+                .eq(OrderDO::getStatus, 1)
+                .le(OrderDO::getExpireTime, now)
+                .orderByAsc(OrderDO::getId)
+                .last("limit " + limit));
+    }
+
     default int updateUserOrderStatusIfMatch(Long userId,
                                              Long orderId,
                                              Integer expectedStatus,
@@ -50,14 +59,29 @@ public interface OrderMapper extends BaseMapper<OrderDO> {
                                            Long orderId,
                                            Integer expectedStatus,
                                            Integer targetStatus,
+                                           LocalDateTime now,
                                            LocalDateTime payTime,
                                            LocalDateTime updateTime) {
         return update(new LambdaUpdateWrapper<OrderDO>()
                 .eq(OrderDO::getUserId, userId)
                 .eq(OrderDO::getId, orderId)
                 .eq(OrderDO::getStatus, expectedStatus)
+                .gt(OrderDO::getExpireTime, now)
                 .set(OrderDO::getStatus, targetStatus)
                 .set(OrderDO::getPayTime, payTime)
+                .set(OrderDO::getUpdateTime, updateTime));
+    }
+
+    default int updateOrderClosedIfMatch(Long orderId,
+                                         Integer expectedStatus,
+                                         Integer targetStatus,
+                                         LocalDateTime closeTime,
+                                         LocalDateTime updateTime) {
+        return update(new LambdaUpdateWrapper<OrderDO>()
+                .eq(OrderDO::getId, orderId)
+                .eq(OrderDO::getStatus, expectedStatus)
+                .set(OrderDO::getStatus, targetStatus)
+                .set(OrderDO::getCloseTime, closeTime)
                 .set(OrderDO::getUpdateTime, updateTime));
     }
 }

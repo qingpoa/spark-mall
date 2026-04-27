@@ -52,6 +52,7 @@ import lombok.extern.slf4j.Slf4j;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
@@ -78,11 +79,14 @@ public class OrderServiceImpl implements OrderService {
 
     private static final DateTimeFormatter ORDER_NO_FORMATTER = DateTimeFormatter.ofPattern("yyyyMMddHHmmss");
     private static final long ORDER_EXPIRE_MINUTES = 30L;
+    private static final int EXPIRED_ORDER_CLOSE_BATCH_SIZE = 100;
     private static final int ORDER_LOG_STATUS_INIT = 0;
     private static final int ORDER_OPERATOR_TYPE_USER = 1;
+    private static final int ORDER_OPERATOR_TYPE_SYSTEM = 2;
     private static final String ORDER_ACTION_CREATE = "CREATE_ORDER";
     private static final String ORDER_ACTION_CANCEL = "CANCEL_ORDER";
     private static final String ORDER_ACTION_PAY = "PAY_ORDER";
+    private static final String ORDER_ACTION_CLOSE = "CLOSE_ORDER";
 
     private final UserFeignClient userFeignClient;
     private final CartFeignClient cartFeignClient;
@@ -313,6 +317,9 @@ public class OrderServiceImpl implements OrderService {
         if (!OrderStatusEnum.PENDING_PAYMENT.getCode().equals(order.getStatus())) {
             throw new BusinessException(OrderErrorCodes.ORDER_STATUS_INVALID, "当前订单状态不允许支付");
         }
+        if (order.getExpireTime() == null || !order.getExpireTime().isAfter(LocalDateTime.now())) {
+            throw new BusinessException(OrderErrorCodes.ORDER_STATUS_INVALID, "订单已超时，无法支付");
+        }
     }
 
     private void cancelUserOrder(Long userId, OrderDO order) {
@@ -341,14 +348,68 @@ public class OrderServiceImpl implements OrderService {
                 OrderStatusEnum.PENDING_PAYMENT.getCode(),
                 OrderStatusEnum.PAID.getCode(),
                 now,
+                now,
                 now
         );
         if (rows != 1) {
-            throw new BusinessException(OrderErrorCodes.ORDER_STATUS_INVALID, "订单状态已变更，支付失败");
+            throw new BusinessException(OrderErrorCodes.ORDER_STATUS_INVALID, "订单状态已变更或已超时，支付失败");
         }
         order.setStatus(OrderStatusEnum.PAID.getCode());
         order.setPayTime(now);
         order.setUpdateTime(now);
+    }
+
+    private void closeExpiredOrder(OrderDO order) {
+        if (order == null) {
+            return;
+        }
+        if (!OrderStatusEnum.PENDING_PAYMENT.getCode().equals(order.getStatus())) {
+            return;
+        }
+
+        Integer beforeStatus = order.getStatus();
+        LocalDateTime now = LocalDateTime.now();
+        int rows = orderMapper.updateOrderClosedIfMatch(
+                order.getId(),
+                OrderStatusEnum.PENDING_PAYMENT.getCode(),
+                OrderStatusEnum.CLOSED.getCode(),
+                now,
+                now
+        );
+        if (rows != 1) {
+            return;
+        }
+
+        order.setStatus(OrderStatusEnum.CLOSED.getCode());
+        order.setCloseTime(now);
+        order.setUpdateTime(now);
+
+        unlockStock(order);
+        rollbackCouponIfNecessary(order.getUserId(), order);
+        saveCloseOrderOperateLog(order.getId(), beforeStatus, OrderStatusEnum.CLOSED.getCode());
+    }
+
+    private void closeExpiredOrders() {
+        List<OrderDO> orders = orderMapper.selectExpiredPendingOrders(
+                LocalDateTime.now(),
+                EXPIRED_ORDER_CLOSE_BATCH_SIZE
+        );
+        if (orders == null || orders.isEmpty()) {
+            return;
+        }
+
+        for (OrderDO order : orders) {
+            closeExpiredOrder(order);
+        }
+    }
+
+    @Scheduled(fixedDelay = 60000)
+    public void scheduleCloseExpiredOrders() {
+        try {
+            closeExpiredOrders();
+        } catch (Exception e) {
+            log.error("close expired orders failed", e);
+        }
     }
 
     private List<Long> validateAndExtractSkuIds(List<SubmitOrderItemRequest> items) {
@@ -712,6 +773,27 @@ public class OrderServiceImpl implements OrderService {
         int rows = orderOperateLogMapper.insert(log);
         if (rows != 1 || log.getId() == null) {
             throw new BusinessException(Result.SERVER_ERROR, "保存支付订单操作日志失败");
+        }
+    }
+
+    private void saveCloseOrderOperateLog(Long orderId, Integer beforeStatus, Integer afterStatus) {
+        LocalDateTime now = LocalDateTime.now();
+
+        OrderOperateLogDO log = new OrderOperateLogDO();
+        log.setOrderId(orderId);
+        log.setOperatorType(ORDER_OPERATOR_TYPE_SYSTEM);
+        log.setOperatorId(null);
+        log.setAction(ORDER_ACTION_CLOSE);
+        log.setBeforeStatus(beforeStatus);
+        log.setAfterStatus(afterStatus);
+        log.setRemark("订单超时自动关闭");
+        log.setCreateTime(now);
+        log.setUpdateTime(now);
+        log.setDeleted(0);
+
+        int rows = orderOperateLogMapper.insert(log);
+        if (rows != 1 || log.getId() == null) {
+            throw new BusinessException(Result.SERVER_ERROR, "保存关闭订单操作日志失败");
         }
     }
 
