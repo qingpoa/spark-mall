@@ -2,7 +2,9 @@ package com.sparkleshop.service.stock.controller.internal;
 
 import com.sparkleshop.common.core.model.Result;
 import com.sparkleshop.common.web.util.Results;
+import com.sparkleshop.service.stock.dto.internal.StockConfirmRequest;
 import com.sparkleshop.service.stock.dto.internal.StockLockRequest;
+import com.sparkleshop.service.stock.dto.internal.StockUnlockRequest;
 import com.sparkleshop.service.stock.service.StockService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -24,6 +26,18 @@ public class StockInternalController {
     @PostMapping("/internal/lock")
     public ResponseEntity<Result> lockStock(@Valid @RequestBody StockLockRequest request) {
         stockService.lockStock(request);
+        return Results.ok();
+    }
+
+    @PostMapping("/internal/confirm")
+    public ResponseEntity<Result> confirmStock(@Valid @RequestBody StockConfirmRequest request) {
+        stockService.confirmStock(request);
+        return Results.ok();
+    }
+
+    @PostMapping("/internal/unlock")
+    public ResponseEntity<Result> unlockStock(@Valid @RequestBody StockUnlockRequest request) {
+        stockService.unlockStock(request);
         return Results.ok();
     }
 }

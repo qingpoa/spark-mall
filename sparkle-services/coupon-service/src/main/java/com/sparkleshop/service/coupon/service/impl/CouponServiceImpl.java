@@ -1,6 +1,8 @@
 package com.sparkleshop.service.coupon.service.impl;
 
 import com.sparkleshop.service.coupon.dto.internal.CouponOccupyRequest;
+import com.sparkleshop.service.coupon.dto.internal.CouponRollbackRequest;
+import com.sparkleshop.service.coupon.dto.internal.CouponUseRequest;
 import com.sparkleshop.service.coupon.dto.internal.CouponValidateRequest;
 import com.sparkleshop.service.coupon.service.CouponService;
 import com.sparkleshop.service.coupon.vo.CouponValidateRespVO;
@@ -23,5 +25,15 @@ public class CouponServiceImpl implements CouponService {
     @Override
     public void occupyCoupon(CouponOccupyRequest request) {
         // 优惠券服务一期先补齐订单侧调用契约，后续在这里接入真实占用逻辑。
+    }
+
+    @Override
+    public void useCoupon(CouponUseRequest request) {
+        // 优惠券服务一期先补齐订单支付后的核销调用契约，后续在这里接入真实核销逻辑。
+    }
+
+    @Override
+    public void rollbackCoupon(CouponRollbackRequest request) {
+        // 优惠券服务一期先补齐订单取消后的回退调用契约，后续在这里接入真实回退逻辑。
     }
 }

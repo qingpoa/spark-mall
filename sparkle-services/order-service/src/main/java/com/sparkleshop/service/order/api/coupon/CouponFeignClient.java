@@ -2,6 +2,8 @@ package com.sparkleshop.service.order.api.coupon;
 
 import com.sparkleshop.common.core.model.Result;
 import com.sparkleshop.service.order.dto.internal.coupon.CouponOccupyRequest;
+import com.sparkleshop.service.order.dto.internal.coupon.CouponRollbackRequest;
+import com.sparkleshop.service.order.dto.internal.coupon.CouponUseRequest;
 import com.sparkleshop.service.order.dto.internal.coupon.CouponValidateRequest;
 import org.springframework.cloud.openfeign.FeignClient;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -15,4 +17,10 @@ public interface CouponFeignClient {
 
     @PostMapping("/coupon/internal/occupy")
     Result occupyCoupon(@RequestBody CouponOccupyRequest request);
+
+    @PostMapping("/coupon/internal/use")
+    Result useCoupon(@RequestBody CouponUseRequest request);
+
+    @PostMapping("/coupon/internal/rollback")
+    Result rollbackCoupon(@RequestBody CouponRollbackRequest request);
 }

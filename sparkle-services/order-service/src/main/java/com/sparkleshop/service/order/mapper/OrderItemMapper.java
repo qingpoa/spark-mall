@@ -12,6 +12,18 @@ import java.util.List;
 @Mapper
 public interface OrderItemMapper extends BaseMapper<OrderItemDO> {
 
+    default List<OrderItemDO> selectByOrderId(Long orderId) {
+        if (orderId == null) {
+            return Collections.emptyList();
+        }
+
+        LambdaQueryWrapper<OrderItemDO> queryWrapper = new LambdaQueryWrapper<OrderItemDO>()
+                .eq(OrderItemDO::getOrderId, orderId)
+                .orderByAsc(OrderItemDO::getId);
+
+        return selectList(queryWrapper);
+    }
+
     default List<OrderItemDO> selectByOrderIds(Collection<Long> orderIds) {
         if (orderIds == null || orderIds.isEmpty()) {
             return Collections.emptyList();

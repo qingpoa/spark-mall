@@ -14,17 +14,24 @@ import com.sparkleshop.service.order.api.stock.StockFeignClient;
 import com.sparkleshop.service.order.api.user.UserFeignClient;
 import com.sparkleshop.service.order.constant.OrderErrorCodes;
 import com.sparkleshop.service.order.constant.OrderRedisKeys;
+import com.sparkleshop.service.order.dto.MockPayRequest;
 import com.sparkleshop.service.order.dto.OrderListQueryRequest;
 import com.sparkleshop.service.order.dto.SubmitOrderItemRequest;
 import com.sparkleshop.service.order.dto.SubmitOrderRequest;
 import com.sparkleshop.service.order.dto.internal.cart.CartClearItemsRequest;
 import com.sparkleshop.service.order.dto.internal.coupon.CouponOccupyRequest;
+import com.sparkleshop.service.order.dto.internal.coupon.CouponRollbackRequest;
+import com.sparkleshop.service.order.dto.internal.coupon.CouponUseRequest;
 import com.sparkleshop.service.order.dto.internal.coupon.CouponValidateRequest;
 import com.sparkleshop.service.order.dto.internal.coupon.CouponValidateRespDTO;
 import com.sparkleshop.service.order.dto.internal.product.ProductSkuSnapshotRequest;
 import com.sparkleshop.service.order.dto.internal.product.ProductSkuSnapshotRespDTO;
+import com.sparkleshop.service.order.dto.internal.stock.StockConfirmItemRequest;
+import com.sparkleshop.service.order.dto.internal.stock.StockConfirmRequest;
 import com.sparkleshop.service.order.dto.internal.stock.StockLockItemRequest;
 import com.sparkleshop.service.order.dto.internal.stock.StockLockRequest;
+import com.sparkleshop.service.order.dto.internal.stock.StockUnlockItemRequest;
+import com.sparkleshop.service.order.dto.internal.stock.StockUnlockRequest;
 import com.sparkleshop.service.order.dto.internal.user.AddressDetailRequest;
 import com.sparkleshop.service.order.dto.internal.user.AddressDetailRespDTO;
 import com.sparkleshop.service.order.entity.OrderDO;
@@ -35,14 +42,19 @@ import com.sparkleshop.service.order.mapper.OrderItemMapper;
 import com.sparkleshop.service.order.mapper.OrderMapper;
 import com.sparkleshop.service.order.mapper.OrderOperateLogMapper;
 import com.sparkleshop.service.order.service.OrderService;
+import com.sparkleshop.service.order.vo.OrderDetailRespVO;
 import com.sparkleshop.service.order.vo.OrderListRespVO;
+import com.sparkleshop.service.order.vo.OrderPayTokenRespVO;
 import com.sparkleshop.service.order.vo.OrderSubmitTokenRespVO;
 import com.sparkleshop.service.order.vo.SubmitOrderRespVO;
 import cn.hutool.core.lang.UUID;
+import lombok.extern.slf4j.Slf4j;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
@@ -60,6 +72,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
 @Service
+@Slf4j
 @RequiredArgsConstructor
 public class OrderServiceImpl implements OrderService {
 
@@ -68,6 +81,8 @@ public class OrderServiceImpl implements OrderService {
     private static final int ORDER_LOG_STATUS_INIT = 0;
     private static final int ORDER_OPERATOR_TYPE_USER = 1;
     private static final String ORDER_ACTION_CREATE = "CREATE_ORDER";
+    private static final String ORDER_ACTION_CANCEL = "CANCEL_ORDER";
+    private static final String ORDER_ACTION_PAY = "PAY_ORDER";
 
     private final UserFeignClient userFeignClient;
     private final CartFeignClient cartFeignClient;
@@ -79,6 +94,52 @@ public class OrderServiceImpl implements OrderService {
     private final OrderOperateLogMapper orderOperateLogMapper;
     private final StringRedisTemplate stringRedisTemplate;
     private final ObjectMapper objectMapper;
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void cancelOrder(Long orderId) {
+        Long userId = LoginUserContext.getRequiredUserId();
+        OrderDO order = getUserOrder(userId, orderId);
+        validateCancelableOrder(order);
+        Integer beforeStatus = order.getStatus();
+        cancelUserOrder(userId, order);
+        unlockStock(order);
+        rollbackCouponIfNecessary(userId, order);
+        saveCancelOrderOperateLog(order.getId(), userId, beforeStatus, OrderStatusEnum.CANCELED.getCode());
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void mockPay(Long orderId, MockPayRequest request) {
+        Long userId = LoginUserContext.getRequiredUserId();
+        consumePayToken(userId, orderId, request.getPayToken());
+        OrderDO order = getUserOrder(userId, orderId);
+        validatePayableOrder(order);
+        Integer beforeStatus = order.getStatus();
+        payUserOrder(userId, order);
+        confirmStock(order);
+        useCouponIfNecessary(userId, order);
+        savePayOrderOperateLog(order.getId(), userId, beforeStatus, OrderStatusEnum.PAID.getCode());
+    }
+
+    @Override
+    public OrderPayTokenRespVO generatePayToken(Long orderId) {
+        Long userId = LoginUserContext.getRequiredUserId();
+        OrderDO order = getUserOrder(userId, orderId);
+        validatePayableOrder(order);
+
+        String payToken = UUID.fastUUID().toString(true);
+        stringRedisTemplate.opsForValue().set(
+                OrderRedisKeys.payToken(userId, orderId),
+                payToken,
+                OrderRedisKeys.ORDER_PAY_TOKEN_EXPIRE_MINUTES,
+                TimeUnit.MINUTES
+        );
+
+        OrderPayTokenRespVO response = new OrderPayTokenRespVO();
+        response.setPayToken(payToken);
+        return response;
+    }
 
     @Override
     public OrderSubmitTokenRespVO generateSubmitToken() {
@@ -94,6 +155,48 @@ public class OrderServiceImpl implements OrderService {
 
         OrderSubmitTokenRespVO response = new OrderSubmitTokenRespVO();
         response.setSubmitToken(submitToken);
+        return response;
+    }
+
+    @Override
+    public OrderDetailRespVO getOrderDetail(Long orderId) {
+        Long userId = LoginUserContext.getRequiredUserId();
+        OrderDO order = getUserOrder(userId, orderId);
+
+        List<OrderItemDO> orderItems = orderItemMapper.selectByOrderId(orderId);
+
+        OrderDetailRespVO response = new OrderDetailRespVO();
+        response.setOrderId(order.getId());
+        response.setOrderNo(order.getOrderNo());
+        response.setStatus(order.getStatus());
+        response.setTotalAmount(order.getTotalAmount());
+        response.setDiscountAmount(order.getDiscountAmount());
+        response.setActualAmount(order.getActualAmount());
+        response.setCouponId(order.getCouponId());
+        response.setReceiverName(order.getReceiverName());
+        response.setReceiverMobile(order.getReceiverMobile());
+        response.setReceiverAddress(order.getReceiverAddress());
+        response.setPayTime(order.getPayTime());
+        response.setCancelTime(order.getCancelTime());
+        response.setCloseTime(order.getCloseTime());
+        response.setCompleteTime(order.getCompleteTime());
+        response.setExpireTime(order.getExpireTime());
+        response.setCreateTime(order.getCreateTime());
+
+        List<OrderDetailRespVO.OrderItem> items = new ArrayList<>(orderItems.size());
+        for (OrderItemDO orderItem : orderItems) {
+            OrderDetailRespVO.OrderItem item = new OrderDetailRespVO.OrderItem();
+            item.setSkuId(orderItem.getSkuId());
+            item.setSpuId(orderItem.getSpuId());
+            item.setSkuName(orderItem.getSkuName());
+            item.setSpuName(orderItem.getSpuName());
+            item.setQuantity(orderItem.getQuantity());
+            item.setPrice(orderItem.getPrice());
+            item.setTotalPrice(orderItem.getTotalPrice());
+            item.setSpecJson(orderItem.getSpecJson());
+            items.add(item);
+        }
+        response.setItems(items);
         return response;
     }
 
@@ -169,7 +272,7 @@ public class OrderServiceImpl implements OrderService {
         saveOrderItems(order.getId(), validateData);
         saveOrderOperateLog(order.getId(), userId, OrderStatusEnum.PENDING_PAYMENT.getCode());
         occupyCouponIfNecessary(userId, request.getCouponId(), order.getId());
-        clearCartItems(userId, validateData.items());
+        clearCartItemsAfterCommit(userId, validateData.items());
 
         SubmitOrderRespVO response = new SubmitOrderRespVO();
         response.setOrderId(order.getId());
@@ -190,6 +293,62 @@ public class OrderServiceImpl implements OrderService {
         }
 
         return new ValidateSubmitOrderData(userId, address, productSnapshots, request.getItems());
+    }
+
+    private OrderDO getUserOrder(Long userId, Long orderId) {
+        OrderDO order = orderMapper.selectUserOrderById(userId, orderId);
+        if (order == null) {
+            throw new BusinessException(OrderErrorCodes.ORDER_NOT_FOUND, "订单不存在");
+        }
+        return order;
+    }
+
+    private void validateCancelableOrder(OrderDO order) {
+        if (!OrderStatusEnum.PENDING_PAYMENT.getCode().equals(order.getStatus())) {
+            throw new BusinessException(OrderErrorCodes.ORDER_STATUS_INVALID, "当前订单状态不允许取消");
+        }
+    }
+
+    private void validatePayableOrder(OrderDO order) {
+        if (!OrderStatusEnum.PENDING_PAYMENT.getCode().equals(order.getStatus())) {
+            throw new BusinessException(OrderErrorCodes.ORDER_STATUS_INVALID, "当前订单状态不允许支付");
+        }
+    }
+
+    private void cancelUserOrder(Long userId, OrderDO order) {
+        LocalDateTime now = LocalDateTime.now();
+        int rows = orderMapper.updateUserOrderStatusIfMatch(
+                userId,
+                order.getId(),
+                OrderStatusEnum.PENDING_PAYMENT.getCode(),
+                OrderStatusEnum.CANCELED.getCode(),
+                now,
+                now
+        );
+        if (rows != 1) {
+            throw new BusinessException(OrderErrorCodes.ORDER_STATUS_INVALID, "订单状态已变更，取消失败");
+        }
+        order.setStatus(OrderStatusEnum.CANCELED.getCode());
+        order.setCancelTime(now);
+        order.setUpdateTime(now);
+    }
+
+    private void payUserOrder(Long userId, OrderDO order) {
+        LocalDateTime now = LocalDateTime.now();
+        int rows = orderMapper.updateUserOrderPaidIfMatch(
+                userId,
+                order.getId(),
+                OrderStatusEnum.PENDING_PAYMENT.getCode(),
+                OrderStatusEnum.PAID.getCode(),
+                now,
+                now
+        );
+        if (rows != 1) {
+            throw new BusinessException(OrderErrorCodes.ORDER_STATUS_INVALID, "订单状态已变更，支付失败");
+        }
+        order.setStatus(OrderStatusEnum.PAID.getCode());
+        order.setPayTime(now);
+        order.setUpdateTime(now);
     }
 
     private List<Long> validateAndExtractSkuIds(List<SubmitOrderItemRequest> items) {
@@ -230,6 +389,25 @@ public class OrderServiceImpl implements OrderService {
         Long result = stringRedisTemplate.execute(script, Collections.singletonList(redisKey), submitToken);
         if (!Long.valueOf(1L).equals(result)) {
             throw new BusinessException(OrderErrorCodes.REPEAT_SUBMIT, "请勿重复提交订单");
+        }
+    }
+
+    private void consumePayToken(Long userId, Long orderId, String payToken) {
+        String redisKey = OrderRedisKeys.payToken(userId, orderId);
+        DefaultRedisScript<Long> script = new DefaultRedisScript<>();
+        script.setScriptText("""
+                local current = redis.call('get', KEYS[1])
+                if current == ARGV[1] then
+                    redis.call('del', KEYS[1])
+                    return 1
+                end
+                return 0
+                """);
+        script.setResultType(Long.class);
+
+        Long result = stringRedisTemplate.execute(script, Collections.singletonList(redisKey), payToken);
+        if (!Long.valueOf(1L).equals(result)) {
+            throw new BusinessException(OrderErrorCodes.REPEAT_SUBMIT, "请勿重复支付提交");
         }
     }
 
@@ -351,6 +529,54 @@ public class OrderServiceImpl implements OrderService {
         }
     }
 
+    private void unlockStock(OrderDO order) {
+        List<OrderItemDO> orderItems = orderItemMapper.selectByOrderId(order.getId());
+        if (orderItems == null || orderItems.isEmpty()) {
+            return;
+        }
+
+        StockUnlockRequest request = new StockUnlockRequest();
+        request.setOrderNo(order.getOrderNo());
+
+        List<StockUnlockItemRequest> unlockItems = new ArrayList<>(orderItems.size());
+        for (OrderItemDO orderItem : orderItems) {
+            StockUnlockItemRequest unlockItem = new StockUnlockItemRequest();
+            unlockItem.setSkuId(orderItem.getSkuId());
+            unlockItem.setQuantity(orderItem.getQuantity());
+            unlockItems.add(unlockItem);
+        }
+        request.setItems(unlockItems);
+
+        Result result = stockFeignClient.unlockStock(request);
+        if (result == null || result.getCode() == null || result.getCode() != 0) {
+            throw new BusinessException(Result.SERVER_ERROR, "释放库存失败");
+        }
+    }
+
+    private void confirmStock(OrderDO order) {
+        List<OrderItemDO> orderItems = orderItemMapper.selectByOrderId(order.getId());
+        if (orderItems == null || orderItems.isEmpty()) {
+            return;
+        }
+
+        StockConfirmRequest request = new StockConfirmRequest();
+        request.setOrderNo(order.getOrderNo());
+
+        List<StockConfirmItemRequest> confirmItems = new ArrayList<>(orderItems.size());
+        for (OrderItemDO orderItem : orderItems) {
+            StockConfirmItemRequest confirmItem = new StockConfirmItemRequest();
+            confirmItem.setSkuId(orderItem.getSkuId());
+            confirmItem.setQuantity(orderItem.getQuantity());
+            confirmItems.add(confirmItem);
+        }
+        request.setItems(confirmItems);
+
+        Result result = stockFeignClient.confirmStock(request);
+        if (result == null || result.getCode() == null || result.getCode() != 0) {
+            throw new BusinessException(Result.SERVER_ERROR, "确认库存扣减失败");
+        }
+    }
+
     private OrderDO saveOrder(String orderNo,
                               SubmitOrderRequest request,
                               ValidateSubmitOrderData validateData,
@@ -447,6 +673,48 @@ public class OrderServiceImpl implements OrderService {
         }
     }
 
+    private void saveCancelOrderOperateLog(Long orderId, Long userId, Integer beforeStatus, Integer afterStatus) {
+        LocalDateTime now = LocalDateTime.now();
+
+        OrderOperateLogDO log = new OrderOperateLogDO();
+        log.setOrderId(orderId);
+        log.setOperatorType(ORDER_OPERATOR_TYPE_USER);
+        log.setOperatorId(userId);
+        log.setAction(ORDER_ACTION_CANCEL);
+        log.setBeforeStatus(beforeStatus);
+        log.setAfterStatus(afterStatus);
+        log.setRemark("用户取消订单");
+        log.setCreateTime(now);
+        log.setUpdateTime(now);
+        log.setDeleted(0);
+
+        int rows = orderOperateLogMapper.insert(log);
+        if (rows != 1 || log.getId() == null) {
+            throw new BusinessException(Result.SERVER_ERROR, "保存取消订单操作日志失败");
+        }
+    }
+
+    private void savePayOrderOperateLog(Long orderId, Long userId, Integer beforeStatus, Integer afterStatus) {
+        LocalDateTime now = LocalDateTime.now();
+
+        OrderOperateLogDO log = new OrderOperateLogDO();
+        log.setOrderId(orderId);
+        log.setOperatorType(ORDER_OPERATOR_TYPE_USER);
+        log.setOperatorId(userId);
+        log.setAction(ORDER_ACTION_PAY);
+        log.setBeforeStatus(beforeStatus);
+        log.setAfterStatus(afterStatus);
+        log.setRemark("用户模拟支付成功");
+        log.setCreateTime(now);
+        log.setUpdateTime(now);
+        log.setDeleted(0);
+
+        int rows = orderOperateLogMapper.insert(log);
+        if (rows != 1 || log.getId() == null) {
+            throw new BusinessException(Result.SERVER_ERROR, "保存支付订单操作日志失败");
+        }
+    }
+
     private void occupyCouponIfNecessary(Long userId, Long couponId, Long orderId) {
         if (couponId == null) {
             return;
@@ -460,6 +728,38 @@ public class OrderServiceImpl implements OrderService {
         Result result = couponFeignClient.occupyCoupon(request);
         if (result == null || result.getCode() == null || result.getCode() != 0) {
             throw new BusinessException(OrderErrorCodes.COUPON_UNAVAILABLE, "占用优惠券失败");
+        }
+    }
+
+    private void useCouponIfNecessary(Long userId, OrderDO order) {
+        if (order.getCouponId() == null) {
+            return;
+        }
+
+        CouponUseRequest request = new CouponUseRequest();
+        request.setUserId(userId);
+        request.setCouponId(order.getCouponId());
+        request.setOrderId(order.getId());
+
+        Result result = couponFeignClient.useCoupon(request);
+        if (result == null || result.getCode() == null || result.getCode() != 0) {
+            throw new BusinessException(OrderErrorCodes.COUPON_UNAVAILABLE, "核销优惠券失败");
+        }
+    }
+
+    private void rollbackCouponIfNecessary(Long userId, OrderDO order) {
+        if (order.getCouponId() == null) {
+            return;
+        }
+
+        CouponRollbackRequest request = new CouponRollbackRequest();
+        request.setUserId(userId);
+        request.setCouponId(order.getCouponId());
+        request.setOrderId(order.getId());
+
+        Result result = couponFeignClient.rollbackCoupon(request);
+        if (result == null || result.getCode() == null || result.getCode() != 0) {
+            throw new BusinessException(OrderErrorCodes.COUPON_UNAVAILABLE, "回退优惠券失败");
         }
     }
 
@@ -477,6 +777,27 @@ public class OrderServiceImpl implements OrderService {
         if (result == null || result.getCode() == null || result.getCode() != 0) {
             throw new BusinessException(Result.SERVER_ERROR, "清理购物车失败");
         }
+    }
+
+    private void clearCartItemsAfterCommit(Long userId, List<SubmitOrderItemRequest> items) {
+        if (!TransactionSynchronizationManager.isActualTransactionActive()) {
+            clearCartItems(userId, items);
+            return;
+        }
+
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                try {
+                    clearCartItems(userId, items);
+                } catch (Exception e) {
+                    log.warn("clear cart after order submit failed, userId={}, skuCount={}",
+                            userId,
+                            items == null ? 0 : items.size(),
+                            e);
+                }
+            }
+        });
     }
 
     private String buildReceiverAddress(AddressDetailRespDTO address) {
