@@ -11,10 +11,12 @@ spring:
   cloud:
     nacos:
       discovery:
-        enabled: false
+        enabled: true
         server-addr: ${app.nacos.server-addr:127.0.0.1:8848}
         namespace: ${app.nacos.namespace:}
         group: ${app.nacos.group:DEFAULT_GROUP}
+        username: ${app.nacos.username:nacos}
+        password: ${app.nacos.password:nacos}
       config:
         enabled: false
         server-addr: ${app.nacos.server-addr:127.0.0.1:8848}
