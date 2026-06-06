@@ -6,6 +6,8 @@ import com.sparkleshop.common.core.constant.CommonConstants;
 import com.sparkleshop.common.core.exception.BusinessException;
 import com.sparkleshop.common.core.model.Result;
 import com.sparkleshop.common.security.constant.SecurityConstants;
+import com.sparkleshop.common.security.constant.SecurityErrorCodes;
+import com.sparkleshop.common.security.enums.UserTypeEnum;
 import com.sparkleshop.common.security.jwt.JwtTokenService;
 import com.sparkleshop.common.security.jwt.TokenUser;
 import com.sparkleshop.gateway.config.GatewaySecurityProperties;
@@ -54,6 +56,9 @@ public class GatewayAuthenticationFilter implements GlobalFilter, Ordered {
 
         try {
             TokenUser tokenUser = jwtTokenService.authenticate(authorization);
+            if (!hasRequiredUserType(path, tokenUser)) {
+                return writeFailure(response, HttpStatus.FORBIDDEN, SecurityErrorCodes.FORBIDDEN, "无权访问该资源", traceId);
+            }
             return chain.filter(mutateExchange(exchange, traceId, tokenUser));
         } catch (BusinessException exception) {
             return writeFailure(response, resolveHttpStatus(exception.getCode()), exception.getCode(), exception.getMessage(), traceId);
@@ -85,6 +90,25 @@ public class GatewayAuthenticationFilter implements GlobalFilter, Ordered {
 
     private boolean isWhitelisted(String path) {
         return gatewaySecurityProperties.getWhitelist().stream().anyMatch(pattern -> pathMatcher.match(pattern, path));
+    }
+
+    private boolean hasRequiredUserType(String path, TokenUser tokenUser) {
+        if (matchesAny(gatewaySecurityProperties.getAdminPaths(), path)) {
+            return tokenUser != null && UserTypeEnum.ADMIN.getCode() == tokenUser.getUserType();
+        }
+        if (matchesAny(gatewaySecurityProperties.getMemberPaths(), path)) {
+            return tokenUser != null && UserTypeEnum.MEMBER.getCode() == tokenUser.getUserType();
+        }
+        return true;
+    }
+
+    private boolean matchesAny(Iterable<String> patterns, String path) {
+        for (String pattern : patterns) {
+            if (pathMatcher.match(pattern, path)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private String resolveTraceId(ServerWebExchange exchange) {

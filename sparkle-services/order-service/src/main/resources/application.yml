@@ -7,7 +7,10 @@ spring:
   profiles:
     active: ${SPRING_PROFILES_ACTIVE:local}
   config:
-    import: optional:classpath:application-${spring.profiles.active}-private.yml
+    import:
+      - optional:classpath:application-${spring.profiles.active}-private.yml
+      - optional:nacos:common-${spring.profiles.active}.yaml?group=${app.nacos.group:DEFAULT_GROUP}&refreshEnabled=true
+      - optional:nacos:${spring.application.name}-${spring.profiles.active}.yaml?group=${app.nacos.group:DEFAULT_GROUP}&refreshEnabled=true
   cloud:
     nacos:
       discovery:
@@ -18,10 +21,12 @@ spring:
         username: ${app.nacos.username:nacos}
         password: ${app.nacos.password:nacos}
       config:
-        enabled: false
+        enabled: true
         server-addr: ${app.nacos.server-addr:127.0.0.1:8848}
         namespace: ${app.nacos.namespace:}
         group: ${app.nacos.group:DEFAULT_GROUP}
+        username: ${app.nacos.username:nacos}
+        password: ${app.nacos.password:nacos}
         file-extension: yaml
   datasource:
     url: jdbc:mysql://${app.datasource.host}:${app.datasource.port}/${app.datasource.name}?useSSL=false&serverTimezone=Asia/Shanghai&characterEncoding=utf8

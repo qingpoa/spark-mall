@@ -1,5 +1,5 @@
 server:
-  port: 8019
+  port: 8079
 
 spring:
   application:
@@ -9,7 +9,10 @@ spring:
   profiles:
     active: ${SPRING_PROFILES_ACTIVE:local}
   config:
-    import: optional:classpath:application-${spring.profiles.active}-private.yml
+    import:
+      - optional:classpath:application-${spring.profiles.active}-private.yml
+      - optional:nacos:common-${spring.profiles.active}.yaml?group=${app.nacos.group:DEFAULT_GROUP}&refreshEnabled=true
+      - optional:nacos:${spring.application.name}-${spring.profiles.active}.yaml?group=${app.nacos.group:DEFAULT_GROUP}&refreshEnabled=true
   data:
     redis:
       host: ${app.redis.host}
@@ -27,10 +30,12 @@ spring:
         username: ${app.nacos.username:nacos}
         password: ${app.nacos.password:nacos}
       config:
-        enabled: false
+        enabled: true
         server-addr: ${app.nacos.server-addr:127.0.0.1:8848}
         namespace: ${app.nacos.namespace:}
         group: ${app.nacos.group:DEFAULT_GROUP}
+        username: ${app.nacos.username:nacos}
+        password: ${app.nacos.password:nacos}
         file-extension: yaml
     gateway:
       server:
@@ -42,12 +47,24 @@ spring:
                 - Path=/api/v1/user/**
               filters:
                 - StripPrefix=2
+            - id: user-admin-service
+              uri: lb://user-service
+              predicates:
+                - Path=/admin/user/**
+            - id: admin-auth-service
+              uri: lb://user-service
+              predicates:
+                - Path=/admin/auth/**
             - id: product-service
               uri: lb://product-service
               predicates:
                 - Path=/api/v1/product/list,/api/v1/product/hot,/api/v1/product/*,/api/v1/product/category/**,/api/v1/product/brand/**
               filters:
                 - StripPrefix=2
+            - id: product-admin-service
+              uri: lb://product-service
+              predicates:
+                - Path=/admin/product/**
             - id: cart-service
               uri: lb://cart-service
               predicates:
@@ -83,11 +100,18 @@ app:
       whitelist:
         - /api/v1/user/register
         - /api/v1/user/login
+        - /api/v1/user/assistant/chat
+        - /admin/auth/register
+        - /admin/auth/login
         - /api/v1/product/list
         - /api/v1/product/hot
         - /api/v1/product/*
         - /api/v1/product/category/**
         - /api/v1/product/brand/**
+      member-paths:
+        - /api/v1/**
+      admin-paths:
+        - /admin/**
 
 management:
   endpoints:

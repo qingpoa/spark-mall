@@ -1,8 +1,11 @@
 package com.sparkleshop.service.product.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.sparkleshop.common.core.exception.BusinessException;
+import com.sparkleshop.service.product.constant.ProductRedisKeys;
 import com.sparkleshop.service.product.entity.CategoryDO;
 import com.sparkleshop.service.product.mapper.CategoryMapper;
+import com.sparkleshop.service.product.mapper.SpuMapper;
 import com.sparkleshop.service.product.service.impl.CategoryServiceImpl;
 import com.sparkleshop.service.product.vo.ProductCategoryTreeRespVO;
 import org.junit.jupiter.api.BeforeEach;
@@ -16,7 +19,9 @@ import org.springframework.data.redis.core.ValueOperations;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -24,6 +29,8 @@ class CategoryServiceImplTest {
 
     @Mock
     private CategoryMapper categoryMapper;
+    @Mock
+    private SpuMapper spuMapper;
     @Mock
     private StringRedisTemplate stringRedisTemplate;
     @Mock
@@ -33,7 +40,7 @@ class CategoryServiceImplTest {
 
     @BeforeEach
     void setUp() {
-        categoryService = new CategoryServiceImpl(categoryMapper, stringRedisTemplate, new ObjectMapper());
+        categoryService = new CategoryServiceImpl(categoryMapper, spuMapper, stringRedisTemplate, new ObjectMapper());
     }
 
     @Test
@@ -51,6 +58,35 @@ class CategoryServiceImplTest {
         assertEquals(1, response.size());
         assertEquals(1, response.get(0).getChildren().size());
         assertEquals(1, response.get(0).getChildren().get(0).getChildren().size());
+    }
+
+    @Test
+    void shouldDeleteCategoryWhenNoChildrenOrProducts() {
+        when(categoryMapper.selectById(4L)).thenReturn(buildCategory(4L, "苹果", 1L, 2));
+        when(categoryMapper.countByParentId(4L)).thenReturn(0L);
+        when(spuMapper.countByCategoryId(4L)).thenReturn(0L);
+
+        categoryService.deleteCategory(4L);
+
+        verify(categoryMapper).deleteById(4L);
+        verify(stringRedisTemplate).delete(ProductRedisKeys.PRODUCT_CATEGORY_TREE);
+    }
+
+    @Test
+    void shouldRejectDeleteCategoryWithChildren() {
+        when(categoryMapper.selectById(1L)).thenReturn(buildCategory(1L, "水果", 0L, 1));
+        when(categoryMapper.countByParentId(1L)).thenReturn(1L);
+
+        assertThrows(BusinessException.class, () -> categoryService.deleteCategory(1L));
+    }
+
+    @Test
+    void shouldRejectDeleteCategoryWithProducts() {
+        when(categoryMapper.selectById(4L)).thenReturn(buildCategory(4L, "苹果", 1L, 2));
+        when(categoryMapper.countByParentId(4L)).thenReturn(0L);
+        when(spuMapper.countByCategoryId(4L)).thenReturn(1L);
+
+        assertThrows(BusinessException.class, () -> categoryService.deleteCategory(4L));
     }
 
     private CategoryDO buildCategory(Long id, String name, Long parentId, Integer level) {

@@ -77,12 +77,12 @@ public class JwtTokenService {
         stringRedisTemplate.opsForValue().set(getBlacklistKey(tokenUser.getTokenId()), "1", Duration.ofMillis(ttlMillis));
     }
 
-    public void invalidateUserTokens(Long userId) {
-        if (userId == null) {
+    public void invalidateUserTokens(Integer userType, Long userId) {
+        if (userType == null || userId == null) {
             return;
         }
         stringRedisTemplate.opsForValue().set(
-                getUserLogoutTimeKey(userId),
+                getUserLogoutTimeKey(userType, userId),
                 String.valueOf(System.currentTimeMillis()),
                 Duration.ofSeconds(jwtProperties.getExpirationSeconds())
         );
@@ -118,10 +118,12 @@ public class JwtTokenService {
     }
 
     private boolean isInvalidatedByUserLogoutTime(TokenUser tokenUser) {
-        if (tokenUser == null || tokenUser.getUserId() == null) {
+        if (tokenUser == null || tokenUser.getUserType() == null || tokenUser.getUserId() == null) {
             return false;
         }
-        String logoutTime = stringRedisTemplate.opsForValue().get(getUserLogoutTimeKey(tokenUser.getUserId()));
+        String logoutTime = stringRedisTemplate.opsForValue().get(
+                getUserLogoutTimeKey(tokenUser.getUserType(), tokenUser.getUserId())
+        );
         if (StrUtil.isBlank(logoutTime)) {
             return false;
         }
@@ -136,8 +138,8 @@ public class JwtTokenService {
         return SecurityRedisKeys.jwtBlacklist(tokenId);
     }
 
-    private String getUserLogoutTimeKey(Long userId) {
-        return SecurityRedisKeys.authUserLogoutTime(userId);
+    private String getUserLogoutTimeKey(Integer userType, Long userId) {
+        return SecurityRedisKeys.authUserLogoutTime(userType, userId);
     }
 
     private SecretKey getSigningKey() {

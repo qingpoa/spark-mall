@@ -2,6 +2,7 @@ package com.sparkleshop.service.user.controller;
 
 import com.sparkleshop.common.core.model.Result;
 import com.sparkleshop.common.web.util.Results;
+import com.sparkleshop.service.user.dto.admin.AdminUserLevelUpdateRequest;
 import com.sparkleshop.service.user.dto.admin.AdminUserPageRequest;
 import com.sparkleshop.service.user.dto.admin.AdminUserStatusUpdateRequest;
 import com.sparkleshop.service.user.service.AdminUserService;
@@ -25,14 +26,26 @@ public class AdminUserController {
     private final AdminUserService adminUserService;
 
     @GetMapping("/list")
-    public ResponseEntity<Result> getUserPage(AdminUserPageRequest request) {
+    public ResponseEntity<Result> getUserPage(@Valid AdminUserPageRequest request) {
         return Results.ok(adminUserService.getUserPage(request));
+    }
+
+    @GetMapping("/{userId}")
+    public ResponseEntity<Result> getUserDetail(@PathVariable("userId") Long userId) {
+        return Results.ok(adminUserService.getUserDetail(userId));
     }
 
     @PutMapping("/{userId}/status")
     public ResponseEntity<Result> updateUserStatus(@PathVariable("userId") Long userId,
                                                    @Valid @RequestBody AdminUserStatusUpdateRequest request) {
         adminUserService.updateUserStatus(userId, request);
+        return Results.ok();
+    }
+
+    @PutMapping("/{userId}/level")
+    public ResponseEntity<Result> updateUserLevel(@PathVariable("userId") Long userId,
+                                                  @Valid @RequestBody AdminUserLevelUpdateRequest request) {
+        adminUserService.updateUserLevel(userId, request);
         return Results.ok();
     }
 }

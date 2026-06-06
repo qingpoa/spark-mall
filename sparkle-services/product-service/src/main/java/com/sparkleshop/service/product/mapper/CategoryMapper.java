@@ -20,4 +20,9 @@ public interface CategoryMapper extends BaseMapper<CategoryDO> {
         return selectList(new LambdaQueryWrapper<CategoryDO>()
                 .orderByAsc(CategoryDO::getSort, CategoryDO::getId));
     }
+
+    default Long countByParentId(Long parentId) {
+        return selectCount(new LambdaQueryWrapper<CategoryDO>()
+                .eq(CategoryDO::getParentId, parentId));
+    }
 }

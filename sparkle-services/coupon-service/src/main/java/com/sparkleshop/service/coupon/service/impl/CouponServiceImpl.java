@@ -1,7 +1,10 @@
 package com.sparkleshop.service.coupon.service.impl;
 
 import cn.hutool.core.lang.UUID;
+import cn.hutool.core.util.StrUtil;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sparkleshop.common.core.exception.BusinessException;
 import com.sparkleshop.common.core.model.Result;
 import com.sparkleshop.common.security.jwt.LoginUserContext;
@@ -31,6 +34,7 @@ import com.sparkleshop.service.coupon.vo.MyCouponPageRespVO;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DuplicateKeyException;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.redisson.api.RLock;
 import org.redisson.api.RedissonClient;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -39,6 +43,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -65,6 +70,8 @@ public class CouponServiceImpl implements CouponService {
     private final UserCouponMapper userCouponMapper;
     private final CouponTemplateMapper couponTemplateMapper;
     private final RedissonClient redissonClient;
+    private final StringRedisTemplate stringRedisTemplate;
+    private final ObjectMapper objectMapper;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -180,7 +187,7 @@ public class CouponServiceImpl implements CouponService {
         Long userId = LoginUserContext.getRequiredUserId();
         UserCouponDO userCoupon = userCouponMapper.selectByIdAndUserId(couponId, userId);
         userCoupon = refreshUnusedCouponIfExpired(userCoupon);
-        CouponTemplateDO template = userCoupon == null ? null : couponTemplateMapper.selectById(userCoupon.getTemplateId());
+        CouponTemplateDO template = userCoupon == null ? null : getRequiredTemplate(userCoupon.getTemplateId());
         CouponEvaluation evaluation = evaluateCoupon(userCoupon, template, queryDTO.getOrderAmount(), LocalDateTime.now());
 
         CouponCheckRespVO response = new CouponCheckRespVO();
@@ -195,7 +202,7 @@ public class CouponServiceImpl implements CouponService {
     public CouponValidateRespVO validateCoupon(CouponValidateRequest request) {
         UserCouponDO userCoupon = userCouponMapper.selectByIdAndUserId(request.getCouponId(), request.getUserId());
         userCoupon = refreshUnusedCouponIfExpired(userCoupon);
-        CouponTemplateDO template = userCoupon == null ? null : couponTemplateMapper.selectById(userCoupon.getTemplateId());
+        CouponTemplateDO template = userCoupon == null ? null : getRequiredTemplate(userCoupon.getTemplateId());
         CouponEvaluation evaluation = evaluateCoupon(userCoupon, template, request.getOrderAmount(), LocalDateTime.now());
         CouponValidateRespVO response = buildUnavailableResponse(request.getCouponId());
         response.setAvailable(evaluation.available());
@@ -326,6 +333,7 @@ public class CouponServiceImpl implements CouponService {
 
         int rows = couponTemplateMapper.increaseIssuedCountIfAvailable(template.getId(), now);
         if (rows != 1) {
+            stringRedisTemplate.delete(CouponRedisKeys.couponTemplate(templateId));
             throw new BusinessException(CouponErrorCodes.COUPON_ISSUED_OUT, "优惠券已领完");
         }
 
@@ -373,9 +381,51 @@ public class CouponServiceImpl implements CouponService {
     }
 
     private CouponTemplateDO getRequiredTemplate(Long templateId) {
+        String cacheKey = CouponRedisKeys.couponTemplate(templateId);
+        String cached = stringRedisTemplate.opsForValue().get(cacheKey);
+        if (StrUtil.isNotBlank(cached)) {
+            try {
+                return objectMapper.readValue(cached, CouponTemplateDO.class);
+            } catch (JsonProcessingException ignored) {
+                stringRedisTemplate.delete(cacheKey);
+            }
+        }
+
+        RLock lock = redissonClient.getLock(CouponRedisKeys.couponTemplateLoadLock(templateId));
+        try {
+            if (!lock.tryLock(RECEIVE_LOCK_WAIT_SECONDS, TimeUnit.SECONDS)) {
+                return loadTemplateAndCache(cacheKey, templateId);
+            }
+            try {
+                // double-check
+                cached = stringRedisTemplate.opsForValue().get(cacheKey);
+                if (StrUtil.isNotBlank(cached)) {
+                    try {
+                        return objectMapper.readValue(cached, CouponTemplateDO.class);
+                    } catch (JsonProcessingException ignored) {
+                        stringRedisTemplate.delete(cacheKey);
+                    }
+                }
+                return loadTemplateAndCache(cacheKey, templateId);
+            } finally {
+                lock.unlock();
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new BusinessException(Result.SERVER_ERROR, "模板加载被中断");
+        }
+    }
+
+    private CouponTemplateDO loadTemplateAndCache(String cacheKey, Long templateId) {
         CouponTemplateDO template = couponTemplateMapper.selectById(templateId);
         if (template == null) {
             throw new BusinessException(CouponErrorCodes.COUPON_TEMPLATE_NOT_FOUND, "优惠券模板不存在");
+        }
+        try {
+            stringRedisTemplate.opsForValue().set(cacheKey,
+                    objectMapper.writeValueAsString(template),
+                    Duration.ofMinutes(CouponRedisKeys.COUPON_TEMPLATE_TTL_MINUTES));
+        } catch (JsonProcessingException ignored) {
         }
         return template;
     }

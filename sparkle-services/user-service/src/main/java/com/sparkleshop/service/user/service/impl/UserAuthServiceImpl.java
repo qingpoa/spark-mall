@@ -1,5 +1,6 @@
 package com.sparkleshop.service.user.service.impl;
 
+import cn.hutool.core.util.StrUtil;
 import com.sparkleshop.common.core.exception.BusinessException;
 import com.sparkleshop.common.core.model.Result;
 import com.sparkleshop.common.security.enums.UserTypeEnum;
@@ -16,7 +17,6 @@ import com.sparkleshop.service.user.mapper.ShopUserMapper;
 import com.sparkleshop.service.user.service.UserAuthService;
 import com.sparkleshop.service.user.support.UserRequestUtils;
 import lombok.RequiredArgsConstructor;
-import org.apache.commons.lang3.StringUtils;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -69,7 +69,7 @@ public class UserAuthServiceImpl implements UserAuthService {
         if (loginType == LoginTypeEnum.CODE) {
             throw new BusinessException(LOGIN_TYPE_NOT_ENABLED, "短信验证码登录暂未启用");
         }
-        if (StringUtils.isBlank(request.getUsername()) || StringUtils.isBlank(request.getPassword())) {
+        if (StrUtil.isBlank(request.getUsername()) || StrUtil.isBlank(request.getPassword())) {
             throw new BusinessException(INVALID_REQUEST, "用户名和密码不能为空");
         }
 
@@ -121,14 +121,14 @@ public class UserAuthServiceImpl implements UserAuthService {
     }
 
     private String defaultNickname(RegisterRequest request) {
-        if (StringUtils.isNotBlank(request.getNickname())) {
+        if (StrUtil.isNotBlank(request.getNickname())) {
             return request.getNickname().trim();
         }
         return "用户" + request.getUsername().trim();
     }
 
     private String normalize(String value) {
-        return StringUtils.isBlank(value) ? null : value.trim();
+        return StrUtil.isBlank(value) ? null : value.trim();
     }
 
     private void insertUser(ShopUserDO user) {
@@ -140,9 +140,9 @@ public class UserAuthServiceImpl implements UserAuthService {
     }
 
     private BusinessException translateDuplicateKeyException(DuplicateKeyException exception) {
-        String message = StringUtils.defaultString(exception.getMostSpecificCause() == null
+        String message = StrUtil.nullToDefault(exception.getMostSpecificCause() == null
                 ? exception.getMessage()
-                : exception.getMostSpecificCause().getMessage()).toLowerCase();
+                : exception.getMostSpecificCause().getMessage(), "").toLowerCase();
         if (message.contains("uk_username")) {
             return new BusinessException(USERNAME_ALREADY_EXISTS, "用户名已存在");
         }

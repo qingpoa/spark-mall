@@ -1,6 +1,7 @@
 package com.sparkleshop.service.coupon.service;
 
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sparkleshop.common.core.exception.BusinessException;
 import com.sparkleshop.common.security.jwt.LoginUserContext;
 import com.sparkleshop.common.security.jwt.TokenUser;
@@ -24,8 +25,12 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.mockito.junit.jupiter.MockitoSettings;
+import org.mockito.quality.Strictness;
 import org.redisson.api.RLock;
 import org.redisson.api.RedissonClient;
+import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.data.redis.core.ValueOperations;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -43,6 +48,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
+@MockitoSettings(strictness = Strictness.LENIENT)
 class CouponServiceImplTest {
 
     @Mock
@@ -53,17 +59,29 @@ class CouponServiceImplTest {
     private RedissonClient redissonClient;
     @Mock
     private RLock receiveLock;
+    @Mock
+    private RLock templateLoadLock;
+    @Mock
+    private StringRedisTemplate stringRedisTemplate;
+    @Mock
+    private ObjectMapper objectMapper;
+    @Mock
+    private ValueOperations<String, String> valueOperations;
 
     @InjectMocks
     private CouponServiceImpl couponService;
 
     @BeforeEach
-    void setUp() {
+    void setUp() throws InterruptedException {
         TokenUser tokenUser = new TokenUser();
         tokenUser.setUserId(1001L);
         tokenUser.setUserType(1);
         tokenUser.setTokenId("token-1");
         LoginUserContext.set(tokenUser);
+        when(stringRedisTemplate.opsForValue()).thenReturn(valueOperations);
+        when(redissonClient.getLock(org.mockito.ArgumentMatchers.startsWith("lock:coupon:receive:"))).thenReturn(receiveLock);
+        when(redissonClient.getLock(org.mockito.ArgumentMatchers.startsWith("lock:coupon:template:load:"))).thenReturn(templateLoadLock);
+        when(templateLoadLock.tryLock(anyLong(), any())).thenReturn(true);
     }
 
     @AfterEach
@@ -78,7 +96,6 @@ class CouponServiceImplTest {
 
         CouponTemplateDO template = buildTemplate(10L);
 
-        when(redissonClient.getLock(anyString())).thenReturn(receiveLock);
         when(receiveLock.tryLock(anyLong(), any())).thenReturn(true);
         when(receiveLock.isHeldByCurrentThread()).thenReturn(true);
         when(couponTemplateMapper.selectById(10L)).thenReturn(template);
@@ -106,7 +123,6 @@ class CouponServiceImplTest {
         CouponTemplateDO template = buildTemplate(10L);
         template.setReceiveLimit(1);
 
-        when(redissonClient.getLock(anyString())).thenReturn(receiveLock);
         when(receiveLock.tryLock(anyLong(), any())).thenReturn(true);
         when(receiveLock.isHeldByCurrentThread()).thenReturn(true);
         when(couponTemplateMapper.selectById(10L)).thenReturn(template);

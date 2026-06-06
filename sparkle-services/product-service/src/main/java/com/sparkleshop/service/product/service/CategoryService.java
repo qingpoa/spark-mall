@@ -13,4 +13,6 @@ public interface CategoryService {
     List<AdminCategoryRespVO> getAdminCategoryList();
 
     Long createCategory(AdminCategoryCreateRequest request);
+
+    void deleteCategory(Long categoryId);
 }

@@ -48,6 +48,8 @@ import java.util.stream.Collectors;
 public class ProductQueryServiceImpl implements ProductQueryService {
 
     private static final String NULL_CACHE_VALUE = "__NULL__";
+    private static final String NULL_PLACEHOLDER = "__all__";
+    private static final String DEFAULT_SORT = "default";
     private static final int DEFAULT_HOT_LIMIT = 10;
     private static final int MAX_HOT_LIMIT = 20;
 
@@ -66,6 +68,12 @@ public class ProductQueryServiceImpl implements ProductQueryService {
             return emptyPage(queryDTO);
         }
 
+        String pageCacheKey = buildPageCacheKey(queryDTO);
+        List<DisplayProduct> displayProducts = loadFromPageCache(pageCacheKey);
+        if (displayProducts != null) {
+            return slicePage(displayProducts, queryDTO);
+        }
+
         List<SpuDO> spus = spuMapper.selectActiveList(categoryIds, queryDTO.getBrandId(), queryDTO.getKeyword());
         if (spus.isEmpty()) {
             return emptyPage(queryDTO);
@@ -75,26 +83,10 @@ public class ProductQueryServiceImpl implements ProductQueryService {
         Map<Long, SkuStockDO> stockMap = groupStockBySkuId(skuStockMapper.selectBySkuIds(extractIds(
                 skuMap.values().stream().flatMap(Collection::stream).toList(), SkuDO::getId)));
 
-        List<DisplayProduct> displayProducts = buildDisplayProducts(spus, skuMap, stockMap, false);
+        displayProducts = buildDisplayProducts(spus, skuMap, stockMap, false);
         displayProducts.sort(resolveComparator(queryDTO.getSortType()));
-
-        int pageNo = queryDTO.getPageNo() == null ? 1 : queryDTO.getPageNo();
-        int pageSize = queryDTO.getPageSize() == null ? 10 : queryDTO.getPageSize();
-        int fromIndex = Math.max(0, (pageNo - 1) * pageSize);
-        int toIndex = Math.min(displayProducts.size(), fromIndex + pageSize);
-
-        ProductPageRespVO response = new ProductPageRespVO();
-        response.setTotal(displayProducts.size());
-        response.setPageNo(pageNo);
-        response.setPageSize(pageSize);
-        if (fromIndex >= displayProducts.size()) {
-            response.setList(Collections.emptyList());
-            return response;
-        }
-        response.setList(displayProducts.subList(fromIndex, toIndex).stream()
-                .map(this::toPageItem)
-                .toList());
-        return response;
+        saveToPageCache(pageCacheKey, displayProducts);
+        return slicePage(displayProducts, queryDTO);
     }
 
     @Override
@@ -256,6 +248,57 @@ public class ProductQueryServiceImpl implements ProductQueryService {
         response.setTotal(0);
         response.setPageNo(queryDTO.getPageNo() == null ? 1 : queryDTO.getPageNo());
         response.setPageSize(queryDTO.getPageSize() == null ? 10 : queryDTO.getPageSize());
+        return response;
+    }
+
+    private String buildPageCacheKey(ProductPageQueryDTO queryDTO) {
+        String categoryId = queryDTO.getCategoryId() != null ? queryDTO.getCategoryId().toString() : NULL_PLACEHOLDER;
+        String brandId = queryDTO.getBrandId() != null ? queryDTO.getBrandId().toString() : NULL_PLACEHOLDER;
+        String keyword = StrUtil.isNotBlank(queryDTO.getKeyword()) ? queryDTO.getKeyword().trim() : NULL_PLACEHOLDER;
+        String sortType = StrUtil.isNotBlank(queryDTO.getSortType()) ? queryDTO.getSortType() : DEFAULT_SORT;
+        return ProductRedisKeys.PRODUCT_PAGE + categoryId + ":" + brandId + ":" + keyword + ":" + sortType;
+    }
+
+    private List<DisplayProduct> loadFromPageCache(String pageCacheKey) {
+        String cached = stringRedisTemplate.opsForValue().get(pageCacheKey);
+        if (StrUtil.isBlank(cached)) {
+            return null;
+        }
+        try {
+            return objectMapper.readValue(cached, new TypeReference<List<DisplayProduct>>() {
+            });
+        } catch (JsonProcessingException ignored) {
+            stringRedisTemplate.delete(pageCacheKey);
+            return null;
+        }
+    }
+
+    private void saveToPageCache(String pageCacheKey, List<DisplayProduct> displayProducts) {
+        try {
+            stringRedisTemplate.opsForValue().set(pageCacheKey,
+                    objectMapper.writeValueAsString(displayProducts), ProductRedisKeys.PRODUCT_PAGE_TTL);
+        } catch (JsonProcessingException ignored) {
+            // ignore
+        }
+    }
+
+    private ProductPageRespVO slicePage(List<DisplayProduct> displayProducts, ProductPageQueryDTO queryDTO) {
+        int pageNo = queryDTO.getPageNo() == null ? 1 : queryDTO.getPageNo();
+        int pageSize = queryDTO.getPageSize() == null ? 10 : queryDTO.getPageSize();
+        int fromIndex = Math.max(0, (pageNo - 1) * pageSize);
+        int toIndex = Math.min(displayProducts.size(), fromIndex + pageSize);
+
+        ProductPageRespVO response = new ProductPageRespVO();
+        response.setTotal(displayProducts.size());
+        response.setPageNo(pageNo);
+        response.setPageSize(pageSize);
+        if (fromIndex >= displayProducts.size()) {
+            response.setList(Collections.emptyList());
+            return response;
+        }
+        response.setList(displayProducts.subList(fromIndex, toIndex).stream()
+                .map(this::toPageItem)
+                .toList());
         return response;
     }
 

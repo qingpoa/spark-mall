@@ -46,4 +46,8 @@ public interface SpuMapper extends BaseMapper<SpuDO> {
         return selectPage(page, wrapper);
     }
 
+    default Long countByCategoryId(Long categoryId) {
+        return selectCount(new LambdaQueryWrapper<SpuDO>()
+                .eq(SpuDO::getCategoryId, categoryId));
+    }
 }

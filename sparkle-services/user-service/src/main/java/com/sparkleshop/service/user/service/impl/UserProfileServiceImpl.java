@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sparkleshop.common.core.exception.BusinessException;
 import com.sparkleshop.common.security.jwt.JwtTokenService;
 import com.sparkleshop.common.security.jwt.LoginUserContext;
+import com.sparkleshop.common.security.jwt.TokenUser;
 import com.sparkleshop.service.user.constant.UserRedisKeys;
 import com.sparkleshop.service.user.dto.profile.AvatarResponse;
 import com.sparkleshop.service.user.dto.profile.ChangePasswordRequest;
@@ -16,7 +17,6 @@ import com.sparkleshop.service.user.mapper.ShopUserMapper;
 import com.sparkleshop.service.user.service.UserProfileService;
 import com.sparkleshop.service.user.support.OssUtils;
 import lombok.RequiredArgsConstructor;
-import org.apache.commons.lang3.StringUtils;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -67,7 +67,7 @@ public class UserProfileServiceImpl implements UserProfileService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void updateCurrentUser(UserProfileUpdateRequest request) {
-        if (StringUtils.isAllBlank(request.getNickname(), request.getEmail())) {
+        if (StrUtil.isAllBlank(request.getNickname(), request.getEmail())) {
             throw new BusinessException(INVALID_REQUEST, "至少需要更新一个字段");
         }
         Long userId = LoginUserContext.getRequiredUserId();
@@ -84,7 +84,8 @@ public class UserProfileServiceImpl implements UserProfileService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void changePassword(ChangePasswordRequest request) {
-        Long userId = LoginUserContext.getRequiredUserId();
+        TokenUser tokenUser = LoginUserContext.getRequired();
+        Long userId = tokenUser.getUserId();
         ShopUserDO user = getRequiredUser(userId);
         if (!passwordEncoder.matches(request.getOldPassword(), user.getPassword())) {
             throw new BusinessException(OLD_PASSWORD_INCORRECT, "原密码不正确");
@@ -98,8 +99,8 @@ public class UserProfileServiceImpl implements UserProfileService {
         update.setPassword(passwordEncoder.encode(request.getNewPassword()));
         shopUserMapper.updateById(update);
         evictUserCache(userId);
-        jwtTokenService.invalidateUserTokens(userId);
-        jwtTokenService.blacklist(LoginUserContext.getRequired());
+        jwtTokenService.invalidateUserTokens(tokenUser.getUserType(), tokenUser.getUserId());
+        jwtTokenService.blacklist(tokenUser);
     }
 
     @Override
@@ -165,6 +166,6 @@ public class UserProfileServiceImpl implements UserProfileService {
     }
 
     private String normalize(String value) {
-        return StringUtils.trimToNull(value);
+        return StrUtil.trimToNull(value);
     }
 }

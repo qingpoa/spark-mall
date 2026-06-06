@@ -10,6 +10,7 @@ import com.sparkleshop.service.product.constant.ProductRedisKeys;
 import com.sparkleshop.service.product.dto.admin.AdminCategoryCreateRequest;
 import com.sparkleshop.service.product.entity.CategoryDO;
 import com.sparkleshop.service.product.mapper.CategoryMapper;
+import com.sparkleshop.service.product.mapper.SpuMapper;
 import com.sparkleshop.service.product.service.CategoryService;
 import com.sparkleshop.service.product.vo.AdminCategoryRespVO;
 import com.sparkleshop.service.product.vo.ProductCategoryTreeRespVO;
@@ -22,12 +23,14 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 @Service
 @RequiredArgsConstructor
 public class CategoryServiceImpl implements CategoryService {
 
     private final CategoryMapper categoryMapper;
+    private final SpuMapper spuMapper;
     private final StringRedisTemplate stringRedisTemplate;
     private final ObjectMapper objectMapper;
 
@@ -85,7 +88,33 @@ public class CategoryServiceImpl implements CategoryService {
         category.setIcon(StrUtil.trimToNull(request.getIcon()));
         categoryMapper.insert(category);
         stringRedisTemplate.delete(ProductRedisKeys.PRODUCT_CATEGORY_TREE);
+        clearPageCache();
         return category.getId();
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void deleteCategory(Long categoryId) {
+        CategoryDO category = categoryMapper.selectById(categoryId);
+        if (category == null) {
+            throw new BusinessException(ProductErrorCodes.RESOURCE_NOT_FOUND, "商品分类不存在");
+        }
+        if (categoryMapper.countByParentId(categoryId) > 0) {
+            throw new BusinessException(ProductErrorCodes.INVALID_REQUEST, "存在子分类，不能删除");
+        }
+        if (spuMapper.countByCategoryId(categoryId) > 0) {
+            throw new BusinessException(ProductErrorCodes.INVALID_REQUEST, "存在关联商品，不能删除");
+        }
+        categoryMapper.deleteById(categoryId);
+        stringRedisTemplate.delete(ProductRedisKeys.PRODUCT_CATEGORY_TREE);
+        clearPageCache();
+    }
+
+    private void clearPageCache() {
+        Set<String> pageKeys = stringRedisTemplate.keys(ProductRedisKeys.PRODUCT_PAGE + "*");
+        if (pageKeys != null && !pageKeys.isEmpty()) {
+            stringRedisTemplate.delete(pageKeys);
+        }
     }
 
     private List<ProductCategoryTreeRespVO> buildTree(List<CategoryDO> categories) {

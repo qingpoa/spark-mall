@@ -12,7 +12,7 @@ public final class SecurityRedisKeys {
         return JWT_BLACKLIST + tokenId;
     }
 
-    public static String authUserLogoutTime(Long userId) {
-        return AUTH_USER_LOGOUT_TIME + userId;
+    public static String authUserLogoutTime(Integer userType, Long userId) {
+        return AUTH_USER_LOGOUT_TIME + userType + ":" + userId;
     }
 }

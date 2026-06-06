@@ -31,6 +31,10 @@ public interface SkuMapper extends BaseMapper<SkuDO> {
                 .orderByAsc(SkuDO::getId));
     }
 
+    default List<SkuDO> selectAdminBySpuId(Long spuId) {
+        return selectAdminBySpuIds(List.of(spuId));
+    }
+
     default List<SkuDO> selectBySpuId(Long spuId) {
         return selectList(new LambdaQueryWrapper<SkuDO>()
                 .eq(SkuDO::getSpuId, spuId)
